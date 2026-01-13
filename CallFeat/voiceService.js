@@ -18,18 +18,29 @@ const vonage = new Vonage({
   privateKey: fs.readFileSync(privateKeyPath),
 });
 
-export default function makeOutboundCall() {
-  return vonage.voice.createOutboundCall({
-    to: [{ type: "phone", number: "94769653219" }],
-    from: { type: "phone", number: process.env.VONAGE_FROM_NUMBER },
-    ncco: [
-      {
-        action: "talk",
-        language: "en-US",
-        style: "0",
-        premium: false,
-        text: "Hello from Voice API",
-      },
-    ],
-  });
+export default async function makeOutboundCall() {
+  try {
+    console.log("📞 Attempting to call:", "94769653219");
+    console.log("📞 From number:", process.env.VONAGE_FROM_NUMBER);
+    
+    const response = await vonage.voice.createOutboundCall({
+      to: [{ type: "phone", number: "94769653219" }],
+      from: { type: "phone", number: process.env.VONAGE_FROM_NUMBER },
+      ncco: [
+        {
+          action: "talk",
+          language: "en-US",
+          style: 0,
+          premium: false,
+          text: "Hello! This is a test call from USafe.",
+        },
+      ],
+    });
+    
+    console.log("✅ Call initiated:", response);
+    return response;
+  } catch (error) {
+    console.error("❌ Vonage API Error:", error.response?.data || error.message);
+    throw error;
+  }
 }
