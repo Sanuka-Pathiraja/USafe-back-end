@@ -1,0 +1,6 @@
+Open terminal in:
+G:\VsProjects\SafeZone\ML\KWS
+
+Then:
+python scripts/train_kws.py
+python scripts/evaluate.py

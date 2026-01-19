@@ -1,0 +1,4 @@
+Install once (inside your ML/KWS folder):
+pip install tensorflow
+
+
