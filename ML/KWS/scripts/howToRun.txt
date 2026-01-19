@@ -1,0 +1,70 @@
+Install once (inside your ML/KWS folder):
+pip install tensorflow
+
+---------------------------------------------
+
+Open terminal in:
+G:\VsProjects\SafeZone\ML\KWS
+
+Then:
+python scripts/train_kws.py
+python scripts/evaluate.py
+
+
+tensor flow error----------------------------------
+
+1 Turn on Windows Long Paths (best fix)
+
+
+Option A (Windows Pro/Enterprise)
+
+Press Win + R → type gpedit.msc → Enter
+Go to: Local Computer Policy → Computer Configuration → Administrative Templates → System → Filesystem
+Open Enable Win32 long paths
+Set to Enabled → Apply → OK
+Restart your PC
+
+Option B (Windows Home) – Registry
+
+Press Win + R → type regedit → Enter
+Go to:
+HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\FileSystem
+Find/create DWORD (32-bit): LongPathsEnabled
+Set value to 1
+Restart your PC
+
+
+2 Stop using Microsoft Store Python (highly recommended)
+
+Your error path shows Store Python. It’s better to use normal Python from python.org.
+Steps
+Uninstall Python (Microsoft Store) (Settings → Apps → Installed apps)
+Install Python 3.11/3.12 from python.org (NOT the store)
+During install, tick ✅ Add python.exe to PATH
+Open a new terminal and check:
+python --version
+where python
+You should NOT see WindowsApps in the path.
+
+
+3 Upgrade pip + install TensorFlow cleanly
+
+After restart + correct Python:
+python -m pip install --upgrade pip setuptools wheel
+python -m pip cache purge
+python -m pip install tensorflow
+
+
+If you still get path issues, install from a short folder path:
+
+mkdir C:\tf
+cd C:\tf
+python -m venv .venv
+.venv\Scripts\activate
+python -m pip install --upgrade pip
+pip install tensorflow
+
+4 Quick compatibility note
+
+TensorFlow wheels on Windows are picky about Python version. If you’re on a brand-new Python minor version and it fails, easiest is:
+Use Python 3.11 (most consistently supported on Windows for TF)
