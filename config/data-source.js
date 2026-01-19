@@ -12,6 +12,7 @@ const AppDataSource = new DataSource({
   logging: true,
   entities: ["./Models/*.js"],
   // Add these for Supabase Pooler support
+  // hello world
   ssl: {
     rejectUnauthorized: false,
   },
