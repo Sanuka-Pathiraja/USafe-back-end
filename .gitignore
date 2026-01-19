@@ -1,1 +1,4 @@
 .env
+
+# Ignore individual KWS keyword datasets
+ML/KWS/data/
