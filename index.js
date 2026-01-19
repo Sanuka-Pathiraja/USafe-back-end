@@ -11,20 +11,13 @@ console.log("VONAGE_PRIVATE_KEY:", process.env.VONAGE_PRIVATE_KEY);
 console.log("VONAGE_APPLICATION_ID:", process.env.VONAGE_APPLICATION_ID);
 console.log("VONAGE_FROM_NUMBER:", process.env.VONAGE_FROM_NUMBER);
 console.log("QUICKSEND_EMAIL:", process.env.QUICKSEND_EMAIL);
-console.log(
-  "QUICKSEND_API_KEY:",
-  process.env.QUICKSEND_API_KEY ? "✅ Loaded" : "❌ Missing"
-);
+console.log("QUICKSEND_API_KEY:", process.env.QUICKSEND_API_KEY ? "✅ Loaded" : "❌ Missing");
 console.log("---");
 
 import express from "express";
 import AppDataSource from "./config/data-source.js";
 import makeOutboundCall from "./CallFeat/voiceService.js";
-import {
-  sendSingleSMS,
-  sendBulkSameSMS,
-  checkBalance,
-} from "./CallFeat/quicksend.js";
+import { sendSingleSMS, sendBulkSameSMS, checkBalance } from "./CallFeat/quicksend.js";
 
 const app = express();
 app.use(express.json());
@@ -75,6 +68,31 @@ app.post("/sms", async (req, res) => {
     console.error("❌ SMS failed:", error.message);
     res.status(500).json({
       message: "Failed to send SMS",
+      error: error.message,
+    });
+  }
+});
+
+/*====================== BULK SMS ENDPOINT ===================== */
+app.post("/bulk-sms", async (req, res) => {
+  if (DISABLE_COMMUNICATIONS) {
+    return res.status(503).json({
+      message: "Bulk SMS feature is temporarily disabled (DISABLE_COMMUNICATIONS=true)",
+    });
+  }
+
+  try {
+    const { to, msg, senderID } = req.body;
+    console.log("📱 Sending Bulk SMS...");
+    const response = await sendBulkSameSMS(to, msg, senderID);
+    res.status(200).json({
+      message: "Bulk SMS sent successfully",
+      data: response,
+    });
+  } catch (error) {
+    console.error("❌ Bulk SMS failed:", error.message);
+    res.status(500).json({
+      message: "Failed to send Bulk SMS",
       error: error.message,
     });
   }
@@ -133,11 +151,7 @@ app.listen(5000, async () => {
   // 3️⃣ Send SMS on startup (ONLY if enabled)
   console.log("\n📱 Auto-sending SMS on startup...");
   try {
-    const smsResponse = await sendSingleSMS(
-      "0769653219",
-      "Hello! This is an automated test message from SafeZone.",
-      "QKSendDemo"
-    );
+    const smsResponse = await sendSingleSMS("0769653219", "Hello! This is an automated test message from SafeZone.", "QKSendDemo");
     console.log("✅ Startup SMS successful:", smsResponse);
   } catch (error) {
     console.error("❌ Startup SMS failed:", error.message);
