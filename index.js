@@ -27,105 +27,17 @@ console.log("---");
 import express from "express";
 import AppDataSource from "./config/data-source.js";
 import makeOutboundCall from "./CallFeat/voiceService.js";
-import {
-  sendSingleSMS,
-  sendBulkSameSMS,
-  checkBalance,
-} from "./CallFeat/quicksend.js";
+import { sendSingleSMS, checkBalance } from "./CallFeat/quicksend.js";
+import callRouter from "./Routers/CallRouter.js";
+import smsRouter from "./Routers/SmsRouter.js";
+import bulkSmsRouter from "./Routers/BulkSmsRouter.js";
 
 /* ===================== APP ===================== */
 const app = express();
 app.use(express.json());
-
-/* ===================== CALL ENDPOINT ===================== */
-app.post("/call", async (req, res) => {
-  if (DISABLE_CALLS) {
-    return res.status(503).json({
-      message: "Call feature is disabled (DISABLE_CALLS=true)",
-    });
-  }
-
-  try {
-    console.log("📞 Initiating call...");
-    const response = await makeOutboundCall();
-    res.status(200).json({
-      message: "Call initiated successfully",
-      data: response,
-    });
-  } catch (error) {
-    console.error("❌ Call failed:", error.message);
-    res.status(500).json({
-      message: "Failed to make call",
-      error: error.message,
-    });
-  }
-});
-
-/* ===================== SMS ENDPOINT ===================== */
-app.post("/sms", async (req, res) => {
-  if (DISABLE_SMS) {
-    return res.status(503).json({
-      message: "SMS feature is disabled (DISABLE_SMS=true)",
-    });
-  }
-
-  try {
-    const { to, msg, senderID } = req.body;
-    console.log("📱 Sending SMS...");
-    const response = await sendSingleSMS(to, msg, senderID);
-    res.status(200).json({
-      message: "SMS sent successfully",
-      data: response,
-    });
-  } catch (error) {
-    console.error("❌ SMS failed:", error.message);
-    res.status(500).json({
-      message: "Failed to send SMS",
-      error: error.message,
-    });
-  }
-});
-
-/* ===================== BULK SMS ENDPOINT ===================== */
-app.post("/bulk-sms", async (req, res) => {
-  if (DISABLE_BULK_SMS) {
-    return res.status(503).json({
-      message: "Bulk SMS feature is disabled (DISABLE_BULK_SMS=true)",
-    });
-  }
-
-  try {
-    const { to, msg, senderID } = req.body;
-    console.log("📱 Sending Bulk SMS...");
-    const response = await sendBulkSameSMS(to, msg, senderID);
-    res.status(200).json({
-      message: "Bulk SMS sent successfully",
-      data: response,
-    });
-  } catch (error) {
-    console.error("❌ Bulk SMS failed:", error.message);
-    res.status(500).json({
-      message: "Failed to send Bulk SMS",
-      error: error.message,
-    });
-  }
-});
-
-/* ===================== BALANCE ENDPOINT ===================== */
-app.get("/balance", async (req, res) => {
-  try {
-    const balance = await checkBalance();
-    res.status(200).json({
-      message: "Balance retrieved",
-      data: balance,
-    });
-  } catch (error) {
-    res.status(500).json({
-      message: "Failed to check balance",
-      error: error.message,
-    });
-  }
-});
+app.use("/", callRouter);
+app.use("/", smsRouter);
+app.use("/", bulkSmsRouter);
 
 /* ===================== START SERVER ===================== */
 app.listen(5000, async () => {
@@ -182,3 +94,4 @@ app.listen(5000, async () => {
   console.log("✅ Startup completed");
   console.log("=".repeat(50) + "\n");
 });
+
