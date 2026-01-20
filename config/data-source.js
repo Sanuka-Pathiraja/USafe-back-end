@@ -10,7 +10,7 @@ const AppDataSource = new DataSource({
   database: process.env.DB_NAME,
   synchronize: true,
   logging: true,
-  entities: [new URL("../Model/User.js", import.meta.url).pathname],
+  entities: [new URL("../Model/User.js", import.meta.url).pathname, new URL("../Model/Contact.js", import.meta.url).pathname],
   ssl: {
     rejectUnauthorized: false,
   },
