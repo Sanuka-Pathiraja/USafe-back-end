@@ -10,16 +10,31 @@ export async function sendBulkSms(req, res) {
   }
 
   try {
-    const { to, msg, senderID } = req.body;
+    const raw = process.env.SOS_BULK_TO || "";
+    const to = raw
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    const msg = process.env.SOS_MESSAGE || "🚨 SOS! Immediate help needed.";
+    const senderID = process.env.SOS_SENDER_ID || "QKSendDemo";
+
+    if (to.length === 0) {
+      return res.status(500).json({
+        message: "Server configuration error: SOS_BULK_TO is not set in .env",
+      });
+    }
+
     const response = await sendBulkSameSMS(to, msg, senderID);
-    res.status(200).json({
-      message: "Bulk SMS sent successfully",
+
+    return res.status(200).json({
+      message: "Bulk SOS SMS sent successfully",
       data: response,
     });
   } catch (error) {
     console.error("Bulk SMS failed:", error.message);
-    res.status(500).json({
-      message: "Failed to send Bulk SMS",
+    return res.status(500).json({
+      message: "Failed to send Bulk SOS SMS",
       error: error.message,
     });
   }

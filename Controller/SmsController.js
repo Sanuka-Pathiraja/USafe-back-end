@@ -10,16 +10,26 @@ export async function sendSms(req, res) {
   }
 
   try {
-    const { to, msg, senderID } = req.body;
+    const to = (process.env.SOS_SMS_TO || "").trim();
+    const msg = process.env.SOS_MESSAGE || "🚨 SOS! Immediate help needed.";
+    const senderID = process.env.SOS_SENDER_ID || "QKSendDemo";
+
+    if (!to) {
+      return res.status(500).json({
+        message: "Server configuration error: SOS_SMS_TO is not set in .env",
+      });
+    }
+
     const response = await sendSingleSMS(to, msg, senderID);
-    res.status(200).json({
-      message: "SMS sent successfully",
+
+    return res.status(200).json({
+      message: "SOS SMS sent successfully",
       data: response,
     });
   } catch (error) {
     console.error("SMS failed:", error.message);
-    res.status(500).json({
-      message: "Failed to send SMS",
+    return res.status(500).json({
+      message: "Failed to send SOS SMS",
       error: error.message,
     });
   }
@@ -28,12 +38,12 @@ export async function sendSms(req, res) {
 export async function getBalance(req, res) {
   try {
     const balance = await checkBalance();
-    res.status(200).json({
+    return res.status(200).json({
       message: "Balance retrieved",
       data: balance,
     });
   } catch (error) {
-    res.status(500).json({
+    return res.status(500).json({
       message: "Failed to check balance",
       error: error.message,
     });

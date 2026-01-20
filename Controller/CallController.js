@@ -10,14 +10,23 @@ export async function initiateCall(req, res) {
   }
 
   try {
-    const response = await makeOutboundCall();
-    res.status(200).json({
+    const to = (process.env.SOS_CALL_TO || "").trim();
+
+    if (!to) {
+      return res.status(500).json({
+        message: "Server configuration error: SOS_CALL_TO is not set in .env",
+      });
+    }
+
+    const response = await makeOutboundCall(to);
+
+    return res.status(200).json({
       message: "Call initiated successfully",
       data: response,
     });
   } catch (error) {
     console.error("Call failed:", error.message);
-    res.status(500).json({
+    return res.status(500).json({
       message: "Failed to make call",
       error: error.message,
     });
