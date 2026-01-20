@@ -1,8 +1,6 @@
 import dotenv from "dotenv";
 dotenv.config();
 
-
-
 /* ===================== FEATURE TOGGLES ===================== */
 const DISABLE_CALLS = process.env.DISABLE_CALLS === "true";
 const DISABLE_SMS = process.env.DISABLE_SMS === "true";
@@ -19,10 +17,7 @@ console.log("📋 Environment Variables Check:");
 console.log("VONAGE_APPLICATION_ID:", process.env.VONAGE_APPLICATION_ID);
 console.log("VONAGE_FROM_NUMBER:", process.env.VONAGE_FROM_NUMBER);
 console.log("QUICKSEND_EMAIL:", process.env.QUICKSEND_EMAIL);
-console.log(
-  "QUICKSEND_API_KEY:",
-  process.env.QUICKSEND_API_KEY ? "✅ Loaded" : "❌ Missing"
-);
+console.log("QUICKSEND_API_KEY:", process.env.QUICKSEND_API_KEY ? "✅ Loaded" : "❌ Missing");
 console.log("---");
 
 /* ===================== IMPORTS ===================== */
@@ -33,9 +28,8 @@ import { sendSingleSMS, checkBalance } from "./CallFeat/quicksend.js";
 import callRouter from "./Routers/CallRouter.js";
 import smsRouter from "./Routers/SmsRouter.js";
 import bulkSmsRouter from "./Routers/BulkSmsRouter.js";
-
+import Userrouter from "./Routers/UserRouter.js";
 import cors from "cors";
-
 
 /* ===================== APP ===================== */
 const app = express();
@@ -43,10 +37,13 @@ app.use(express.json());
 app.use("/", callRouter);
 app.use("/", smsRouter);
 app.use("/", bulkSmsRouter);
-app.use(cors({
-  origin: true,        // for dev (allows all origins)
-  credentials: true
-}));
+app.use(
+  cors({
+    origin: true, // for dev (allows all origins)
+    credentials: true,
+  }),
+);
+app.use("/user", Userrouter);
 
 app.get("/health", (req, res) => {
   res.json({ ok: true, message: "Backend is reachable" });
@@ -82,11 +79,7 @@ app.listen(5000, async () => {
   if (!DISABLE_SMS) {
     console.log("\n📱 Auto-sending SMS on startup...");
     try {
-      await sendSingleSMS(
-        "0769653219",
-        "Hello! This is an automated test message from SafeZone.",
-        "QKSendDemo"
-      );
+      await sendSingleSMS("0769653219", "Hello! This is an automated test message from SafeZone.", "QKSendDemo");
       console.log("✅ Startup SMS successful");
     } catch (error) {
       console.error("❌ Startup SMS failed:", error.message);
@@ -107,4 +100,3 @@ app.listen(5000, async () => {
   console.log("✅ Startup completed");
   console.log("=".repeat(50) + "\n");
 });
-

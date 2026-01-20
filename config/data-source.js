@@ -10,14 +10,12 @@ const AppDataSource = new DataSource({
   database: process.env.DB_NAME,
   synchronize: true,
   logging: true,
-  entities: ["./Models/*.js"],
-  // Add these for Supabase Pooler support
-  // hello world
+  entities: [new URL("../Model/User.js", import.meta.url).pathname],
   ssl: {
     rejectUnauthorized: false,
   },
   extra: {
-    max: 20, // Helps manage connections for your 6 members
+    max: 20,
     connectionTimeoutMillis: 2000,
   },
 });
