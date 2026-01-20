@@ -1,6 +1,8 @@
 import dotenv from "dotenv";
 dotenv.config();
 
+
+
 /* ===================== FEATURE TOGGLES ===================== */
 const DISABLE_CALLS = process.env.DISABLE_CALLS === "true";
 const DISABLE_SMS = process.env.DISABLE_SMS === "true";
@@ -32,12 +34,23 @@ import callRouter from "./Routers/CallRouter.js";
 import smsRouter from "./Routers/SmsRouter.js";
 import bulkSmsRouter from "./Routers/BulkSmsRouter.js";
 
+import cors from "cors";
+
+
 /* ===================== APP ===================== */
 const app = express();
 app.use(express.json());
 app.use("/", callRouter);
 app.use("/", smsRouter);
 app.use("/", bulkSmsRouter);
+app.use(cors({
+  origin: true,        // for dev (allows all origins)
+  credentials: true
+}));
+
+app.get("/health", (req, res) => {
+  res.json({ ok: true, message: "Backend is reachable" });
+});
 
 /* ===================== START SERVER ===================== */
 app.listen(5000, async () => {
