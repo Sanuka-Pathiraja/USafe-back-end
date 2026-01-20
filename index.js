@@ -10,6 +10,8 @@ import { checkBalance } from "./CallFeat/quicksend.js";
 import callRouter from "./Routers/CallRouter.js";
 import smsRouter from "./Routers/SmsRouter.js";
 import bulkSmsRouter from "./Routers/BulkSmsRouter.js";
+import Userrouter from "./Routers/UserRouter.js";
+import contactRouter from "./Routers/ContactRouter.js";
 
 /* ===================== FEATURE TOGGLES ===================== */
 const DISABLE_CALLS = process.env.DISABLE_CALLS === "true";
@@ -36,6 +38,8 @@ app.get("/health", (req, res) => {
 app.use("/", callRouter);
 app.use("/", smsRouter);
 app.use("/", bulkSmsRouter);
+app.use("/user", Userrouter);
+app.use("/contact", contactRouter);
 
 /* ===================== START SERVER ===================== */
 app.listen(5000, async () => {
