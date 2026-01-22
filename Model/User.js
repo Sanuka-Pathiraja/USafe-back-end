@@ -9,9 +9,12 @@ export default new EntitySchema({
       type: "int",
       generated: true,
     },
-    name: { type: "varchar" },
+    firstName: { type: "varchar" },
+    lastName: { type: "varchar" },
     age: { type: "int" },
     phone: { type: "varchar" },
+    email: { type: "varchar" },
+    password: { type: "varchar" },
   },
   relations: {
     contacts: {
