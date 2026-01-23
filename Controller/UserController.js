@@ -202,3 +202,63 @@ export const deleteUser = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
+
+// ================= GOOGLE LOGIN  ================= //
+
+import { OAuth2Client } from "google-auth-library";
+
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+export const googleLogin = async (req, res) => {
+  try {
+    const { idToken } = req.body;
+
+    if (!idToken) {
+      return res.status(400).json({ error: "Google token is required" });
+    }
+
+    // 🔐 Verify Google token
+    const ticket = await client.verifyIdToken({
+      idToken,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+
+    const { email, given_name: firstName, family_name: lastName } = payload;
+
+    const userRepo = AppDataSource.getRepository("User");
+
+    let user = await userRepo.findOneBy({ email });
+
+    // 🆕 Auto-create user if not exists
+    if (!user) {
+      user = userRepo.create({
+        email,
+        firstName,
+        lastName,
+        authProvider: "google",
+        password: null, // 🚫 no password
+      });
+
+      await userRepo.save(user);
+    }
+
+    // 🔐 Issue YOUR JWT
+    const token = jwt.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN });
+
+    res.json({
+      success: true,
+      message: "Google login successful",
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+      },
+    });
+  } catch (err) {
+    res.status(401).json({ error: "Invalid Google token" });
+  }
+};
