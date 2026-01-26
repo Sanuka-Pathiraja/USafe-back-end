@@ -41,6 +41,10 @@ app.use("/", bulkSmsRouter);
 app.use("/user", Userrouter);
 app.use("/contact", contactRouter);
 
+/*======================================PayHere Routes=========================================*/
+// import payHereRouter from "./Routers/PayHereRouter.js";
+// app.use("/", payHereRouter);
+
 /* ===================== START SERVER ===================== */
 app.listen(5000, async () => {
   console.log("🚀 Server running at http://localhost:5000");
