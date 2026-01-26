@@ -27,5 +27,10 @@ export default new EntitySchema({
       inverseSide: "user", // Must match Contact.user
       cascade: true, // Optional: automatically save new contacts
     },
+    communityReports: {
+      type: "one-to-many",
+      target: "CommunityReport",
+      inverseSide: "user",
+    },
   },
 });

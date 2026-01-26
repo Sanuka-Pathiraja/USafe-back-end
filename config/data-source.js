@@ -8,9 +8,10 @@ const AppDataSource = new DataSource({
   username: process.env.DB_USER,
   password: process.env.DB_PASS,
   database: process.env.DB_NAME,
-  synchronize: true,
+  synchronize: false,
   logging: true,
-  entities: [new URL("../Model/User.js", import.meta.url).pathname, new URL("../Model/Contact.js", import.meta.url).pathname],
+  entities: ["./Model/User.js", "./Model/Contact.js", "./Model/CommunityReport.js"],
+  migrations: ["src/migrations/*.ts"],
   ssl: {
     rejectUnauthorized: false,
   },

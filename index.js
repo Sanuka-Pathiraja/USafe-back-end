@@ -12,6 +12,7 @@ import smsRouter from "./Routers/SmsRouter.js";
 import bulkSmsRouter from "./Routers/BulkSmsRouter.js";
 import Userrouter from "./Routers/UserRouter.js";
 import contactRouter from "./Routers/ContactRouter.js";
+import communityReportRouter from "./Routers/CommunityReportRouter.js";
 
 /* ===================== FEATURE TOGGLES ===================== */
 const DISABLE_CALLS = process.env.DISABLE_CALLS === "true";
@@ -40,6 +41,7 @@ app.use("/", smsRouter);
 app.use("/", bulkSmsRouter);
 app.use("/user", Userrouter);
 app.use("/contact", contactRouter);
+app.use("/report", communityReportRouter);
 
 /*======================================PayHere Routes=========================================*/
 // import payHereRouter from "./Routers/PayHereRouter.js";
