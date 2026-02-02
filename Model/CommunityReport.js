@@ -21,6 +21,10 @@ export default new EntitySchema({
       array: true,
       nullable: true,
     },
+    location: {
+      type: "varchar",
+      nullable: true,
+    },
   },
   relations: {
     user: {

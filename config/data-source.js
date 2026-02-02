@@ -11,7 +11,7 @@ const AppDataSource = new DataSource({
   synchronize: false,
   logging: true,
   entities: ["./Model/User.js", "./Model/Contact.js", "./Model/CommunityReport.js"],
-  migrations: ["src/migrations/*.js"],
+  migrations: ["src/migrations/*.ts"],
   ssl: {
     rejectUnauthorized: false,
   },

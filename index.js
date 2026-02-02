@@ -47,6 +47,18 @@ app.use("/report", communityReportRouter);
 // import payHereRouter from "./Routers/PayHereRouter.js";
 // app.use("/", payHereRouter);
 
+/*======================================Stripe Routes=========================================*/
+import stripeRouter from "./Routers/stripeRouter.js";
+app.use("/payment", stripeRouter);
+
+/* ===================== WEBHOOKS ===================== */
+import { handleStripeWebhook } from "./Controller/StripeWebHookHandler.js";
+if (process.env.NODE_ENV === "development") {
+  app.post("/webhook/stripe", express.json(), handleStripeWebhook);
+} else {
+  app.post("/webhook/stripe", express.raw({ type: "application/json" }), handleStripeWebhook);
+}
+
 /* ===================== START SERVER ===================== */
 app.listen(5000, async () => {
   console.log("🚀 Server running at http://localhost:5000");
