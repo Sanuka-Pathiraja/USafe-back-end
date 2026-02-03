@@ -30,14 +30,23 @@ export const handleStripeWebhook = async (req, res) => {
   if (event.type === "payment_intent.succeeded") {
     const payment = event.data.object;
 
-    await supabase.from("payments").insert([
+    console.log("🔥 Payment object:", payment);
+
+    const { data, error } = await supabase.from("payments").insert([
       {
         user_id: payment.metadata.user_id,
         stripe_id: payment.id,
         amount: payment.amount / 100,
+        currency: payment.currency,
         status: payment.status,
       },
     ]);
+
+    if (error) {
+      console.log("❌ Supabase insert error:", error);
+    } else {
+      console.log("✅ Supabase insert success:", data);
+    }
   }
 
   res.json({ received: true });

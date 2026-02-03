@@ -11,14 +11,9 @@ const AppDataSource = new DataSource({
   synchronize: false,
   logging: true,
   entities: ["./Model/User.js", "./Model/Contact.js", "./Model/CommunityReport.js", "./Model/Payment.js"],
-  migrations: ["src/migrations/*.js"],
-  ssl: {
-    rejectUnauthorized: false,
-  },
-  extra: {
-    max: 20,
-    connectionTimeoutMillis: 2000,
-  },
+  migrations: ["src/migrations/*.ts"],
+  ssl: { rejectUnauthorized: false },
+  extra: { max: 20, connectionTimeoutMillis: 2000 },
 });
 
 export default AppDataSource;

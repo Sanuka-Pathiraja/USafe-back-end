@@ -6,8 +6,8 @@
   "scripts": {
     "start": "nodemon index.js",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "typeorm": "typeorm-ts-node-esm",
-    "migration:generate": "npm run typeorm -- migration:generate",
+    "typeorm": "typeorm-ts-node-esm -d config/data-source.ts",
+    "migration:generate": "npm run typeorm -- migration:generate src/migrations/Name",
     "migration:run": "npm run typeorm -- migration:run"
   },
   "keywords": [],
