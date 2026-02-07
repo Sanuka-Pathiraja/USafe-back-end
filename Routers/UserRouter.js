@@ -7,10 +7,10 @@ const Userrouter = express.Router();
 Userrouter.post("/add", createUser);
 Userrouter.post("/login", loginUser);
 Userrouter.post("/googleLogin", googleLogin);
-Userrouter.get("/", authMiddleware, getUsers);
-Userrouter.get("/get/:id", getUserById);
-Userrouter.get("/contacts/:id", getUserContacts);
-Userrouter.put("/update/:id", authMiddleware, updateUser);
-Userrouter.delete("/delete/:id", authMiddleware, deleteUser);
+Userrouter.get("/", getUsers);
+Userrouter.get("/get", authMiddleware, getUserById);
+Userrouter.get("/contacts/", getUserContacts);
+Userrouter.put("/update", authMiddleware, updateUser);
+Userrouter.delete("/delete", authMiddleware, deleteUser);
 
 export default Userrouter;
