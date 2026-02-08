@@ -26,6 +26,20 @@ export const handleStripeWebhook = async (req, res) => {
     }
   }
 
+  if (event.type === "checkout.session.completed") {
+    const session = event.data.object;
+
+    await supabase.from("payments").insert([
+      {
+        user_id: session.metadata.user_id,
+        stripe_id: session.id,
+        amount: session.amount_total / 100,
+        currency: session.currency,
+        status: "paid",
+      },
+    ]);
+  }
+
   // Handle successful payment
   if (event.type === "payment_intent.succeeded") {
     const payment = event.data.object;

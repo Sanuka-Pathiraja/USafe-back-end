@@ -1,6 +1,7 @@
 import express from "express";
 import { createCommunityReport } from "../Controller/CommunityReportController.js";
 import multer from "multer";
+import { authMiddleware } from "../middleware/authMiddleware.js";
 
 const communityReportRouter = express.Router();
 
@@ -13,6 +14,6 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 // Use upload.array if multiple images
-communityReportRouter.post("/add", upload.array("images_proofs"), createCommunityReport);
+communityReportRouter.post("/add", authMiddleware, upload.array("images_proofs"), createCommunityReport);
 
 export default communityReportRouter;
