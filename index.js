@@ -43,10 +43,6 @@ app.use("/user", Userrouter);
 app.use("/contact", contactRouter);
 app.use("/report", communityReportRouter);
 
-/*======================================PayHere Routes=========================================*/
-// import payHereRouter from "./Routers/PayHereRouter.js";
-// app.use("/", payHereRouter);
-
 /*======================================Stripe Routes=========================================*/
 import stripeRouter from "./Routers/stripeRouter.js";
 app.use("/payment", stripeRouter);
