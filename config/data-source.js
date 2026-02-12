@@ -3,11 +3,7 @@ import "dotenv/config";
 
 const AppDataSource = new DataSource({
   type: "postgres",
-  host: process.env.DB_HOST,
-  port: Number(process.env.DB_PORT),
-  username: process.env.DB_USER,
-  password: process.env.DB_PASS,
-  database: process.env.DB_NAME,
+  url: process.env.DATABASE_URL,
   synchronize: false,
   logging: true,
   entities: ["./Model/User.js", "./Model/Contact.js", "./Model/CommunityReport.js", "./Model/Payment.js"],
@@ -16,9 +12,11 @@ const AppDataSource = new DataSource({
     rejectUnauthorized: false,
   },
   extra: {
-    max: 20,
-    connectionTimeoutMillis: 2000,
+    ssl: {
+      rejectUnauthorized: false,
+    },
   },
+  poolSize: 5,
 });
 
 export default AppDataSource;
