@@ -1,7 +1,5 @@
 import makeOutboundCall from "../CallFeat/voiceService.js";
 
-// fsdfjsdhflaskhfkjsahfjsdahfsdfhlsafjsadf tt?
-
 const DISABLE_CALLS = process.env.DISABLE_CALLS === "true";
 
 export async function initiateCall(req, res) {
