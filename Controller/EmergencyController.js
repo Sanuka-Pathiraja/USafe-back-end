@@ -20,41 +20,47 @@ function getSession(sessionId) {
   return emergencySessions.get(sessionId) || null;
 }
 
-/* ===================== PHONE NORMALIZATION ===================== */
-function normalizeLkNumber(raw) {
+/* ===================== QUICKSEND PHONE NORMALIZATION ===================== */
+/**
+ * QuickSend expects LK mobile numbers in local format: 07XXXXXXXX (10 digits)
+ * Accepts inputs like:
+ *  - 9477XXXXXXXX
+ *  - +9477XXXXXXXX
+ *  - 077XXXXXXX
+ *  - 07X XXX XXXX (with spaces/dashes)
+ * Returns: 07XXXXXXXX or null
+ */
+function toQuickSendNumber(raw) {
   const s = String(raw || "").trim();
   if (!s) return null;
 
-  // remove spaces/dashes/etc; keep digits and plus
+  // remove spaces/dashes/parentheses etc; keep digits and plus
   const cleaned = s.replace(/[^\d+]/g, "");
 
-  // +94XXXXXXXXX -> 94XXXXXXXXX
+  // +94 7X XXXXXXX -> 07X XXXXXXX
   if (cleaned.startsWith("+94")) {
-    const digits = "94" + cleaned.slice(3).replace(/\D/g, "");
-    return digits;
+    const rest = cleaned.slice(3).replace(/\D/g, ""); // expected 9 digits: 7XXXXXXXX
+    if (rest.length === 9) return "0" + rest;
+    return null;
   }
 
-  // 94XXXXXXXXX
+  // 94 7X XXXXXXX -> 07X XXXXXXX
   if (cleaned.startsWith("94")) {
-    return cleaned.replace(/\D/g, "");
+    const rest = cleaned.slice(2).replace(/\D/g, ""); // expected 9 digits: 7XXXXXXXX
+    if (rest.length === 9) return "0" + rest;
+    return null;
   }
 
-  // 0XXXXXXXXX (10 digits) -> 94XXXXXXXXX
-  if (cleaned.startsWith("0") && cleaned.length === 10) {
-    return "94" + cleaned.slice(1);
-  }
-
-  // already like 9477XXXXXXX etc
-  if (cleaned.startsWith("947")) {
+  // already local (07XXXXXXXX)
+  if (cleaned.startsWith("0")) {
     return cleaned.replace(/\D/g, "");
   }
 
   return null;
 }
 
-// LK number: 94 + 9 digits (total 11 digits)
-function isValidLkMobile(n) {
-  return typeof n === "string" && /^94\d{9}$/.test(n);
+function isValidQuickSendLkMobile(n) {
+  return typeof n === "string" && /^07\d{8}$/.test(n); // 10 digits, starts with 07
 }
 
 /**
@@ -63,6 +69,8 @@ function isValidLkMobile(n) {
  * - loads saved contacts from DB (max 5)
  * - sends SOS SMS (bulk -> fallback single)
  * - creates sessionId
+ *
+ * ✅ IMPORTANT: Never blocks emergency session creation if SMS fails.
  */
 export const startEmergency = async (req, res) => {
   const userId = req.user.id;
@@ -96,22 +104,22 @@ export const startEmergency = async (req, res) => {
       return res.status(400).json({ error: "No emergency contacts saved" });
     }
 
-    // Build target list with normalization + validation
+    // Build target list with normalization + validation (QuickSend local 07 format)
     const targets = contacts.map((c) => {
-      const normalized = normalizeLkNumber(c.phone);
-      const valid = normalized ? isValidLkMobile(normalized) : false;
+      const normalized = toQuickSendNumber(c.phone);
+      const valid = normalized ? isValidQuickSendLkMobile(normalized) : false;
 
       return {
         contactId: c.contactId,
         name: c.name,
         relationship: c.relationship,
         rawPhone: c.phone,
-        phone: normalized, // normalized phone
+        phone: normalized, // 07XXXXXXXX
         valid,
       };
     });
 
-    console.log("📞 Normalized targets:");
+    console.log("📞 Normalized targets (QuickSend expects 07xxxxxxxx):");
     for (const t of targets) {
       console.log(
         ` - [${t.contactId}] ${t.name} | raw=${t.rawPhone} | norm=${t.phone} | valid=${t.valid}`
@@ -214,7 +222,7 @@ export const startEmergency = async (req, res) => {
       }
     }
 
-    // Save report back to session (reference is same object, but keep explicit)
+    // Save report back to session
     const session = getSession(sessionId);
     if (session) session.smsReport = smsReport;
 
@@ -227,13 +235,12 @@ export const startEmergency = async (req, res) => {
     console.log("✅ Emergency session created:", sessionId);
     console.log("========================================");
 
-    // ✅ Do NOT block emergency start if SMS partially fails
     return res.json({
       sessionId,
       contactsCount: targets.length,
       validSmsTargets: validNumbers.length,
       smsMode: smsReport.mode,
-      smsFailures: smsReport.failures, // helpful for debugging in Postman
+      smsFailures: smsReport.failures,
     });
   } catch (err) {
     console.error("❌ Emergency start failed:", err.message);
