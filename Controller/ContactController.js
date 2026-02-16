@@ -1,156 +1,285 @@
+// Controller/ContactController.js
 import AppDataSource from "../config/data-source.js";
 
-export const createContact = async (req, res) => {
+/** Keep API responses consistent for Flutter */
+const toDto = (c) => ({
+  contactId: c.contactId,
+  name: c.name,
+  relationship: c.relationship,
+  phone: c.phone,
+});
+
+/**
+ * GET /contact/contacts
+ * Returns only the logged-in user's contacts
+ */
+export const getMyContacts = async (req, res) => {
   try {
-    const repo = AppDataSource.getRepository("Contact");
-    const userRepo = AppDataSource.getRepository("User");
-
-    const { name, relationship, phone, userId } = req.body;
-
-    // Validate required fields
-    if (!name || !relationship || !phone || !userId) {
-      return res.status(400).json({ error: "All fields are required" });
-    }
-
-    // Check duplicate phone
-    const existingContact = await repo.findOneBy({ phone });
-    if (existingContact) {
-      return res.status(400).json({
-        success: false,
-        error: "Contact with this phone number already exists",
-      });
-    }
-
-    // Check user exists
-    const user = await userRepo.findOneBy({ id: userId });
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
-
-    // ✅ CORRECT way to create entity
-    const contact = repo.create({
-      name,
-      relationship,
-      phone,
-      user, // TypeORM sets userId automatically
-    });
-
-    await repo.save(contact);
-
-    res.status(201).json({
-      success: true,
-      message: "Contact saved successfully",
-      contact: {
-        contactId: contact.contactId,
-        name: contact.name,
-        relationship: contact.relationship,
-        phone: contact.phone,
-        userId: user.id,
-      },
-    });
-  } catch (err) {
-    console.error("contact saved unsuccessfull ❌", err);
-    res.status(500).json({ success: false, error: err.message });
-  }
-};
-
-export const getContacts = async (req, res) => {
-  try {
+    const userId = req.user.id;
     const repo = AppDataSource.getRepository("Contact");
 
     const contacts = await repo.find({
-      relations: {
-        user: true,
-      },
+      where: { user: { id: userId } },
+      relations: { user: true },
       select: {
         contactId: true,
         name: true,
         relationship: true,
         phone: true,
-        user: {
-          id: true,
-        },
+        user: { id: true },
       },
+      order: { contactId: "ASC" },
     });
 
-    // Transform response
-    const response = contacts.map((contact) => ({
-      contactId: contact.contactId,
-      name: contact.name,
-      relationship: contact.relationship,
-      phone: contact.phone,
-      userId: contact.user.id,
-    }));
-
-    res.json({ success: true, contacts: response });
+    return res.json(contacts.map(toDto));
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    return res.status(500).json({ error: err.message });
   }
 };
 
-export const updateContact = async (req, res) => {
+/**
+ * POST /contact/contacts
+ * Body: { name, phone, relationship }
+ * Adds a contact for the logged-in user
+ */
+export const addMyContact = async (req, res) => {
   try {
-    const contactRepo = AppDataSource.getRepository("Contact");
-    const contactId = Number(req.params.contactId);
     const userId = req.user.id;
-    const contact = await contactRepo.findOne({
-      where: {
-        contactId: contactId,
-        user: { id: userId }, // 🔒 OWNERSHIP CHECK
-      },
-      relations: { user: true },
-    });
-    if (!contact) {
-      return res.status(403).json({
-        error: "Access denied or contact not found",
-      });
-    }
-    const { name, relationship, phone } = req.body;
-    contact.name = name || contact.name;
-    contact.relationship = relationship || contact.relationship;
-    contact.phone = phone || contact.phone;
-    await contactRepo.save(contact);
-    res.json({
-      success: true,
-      message: "contact updated successfully",
-      contact: {
-        contactId: contact.contactId,
-        name: contact.name,
-        relationship: contact.relationship,
-        phone: contact.phone,
-        userId: contact.user.id,
-      },
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-};
+    const { name, phone, relationship } = req.body || {};
 
-export const deleteContact = async (req, res) => {
-  try {
+    if (!name || !phone || !relationship) {
+      return res
+        .status(400)
+        .json({ error: "name, phone, relationship required" });
+    }
+
+    const userRepo = AppDataSource.getRepository("User");
     const contactRepo = AppDataSource.getRepository("Contact");
 
-    const contactId = req.params.id;
-    const userId = req.user.id; // from JWT
+    const user = await userRepo.findOneBy({ id: userId });
+    if (!user) return res.status(404).json({ error: "User not found" });
 
-    const contact = await contactRepo.findOne({
-      where: {
-        contactId: contactId,
-        user: { id: userId }, // 🔒 OWNERSHIP CHECK
-      },
+    // ✅ Prevent duplicates ONLY for this user
+    const existing = await contactRepo.findOne({
+      where: { phone, user: { id: userId } },
       relations: { user: true },
     });
 
-    if (!contact) {
-      return res.status(403).json({
-        error: "Access denied or contact not found",
-      });
+    if (existing) {
+      return res
+        .status(400)
+        .json({ error: "This phone is already saved in your contacts" });
     }
 
-    await contactRepo.remove(contact);
+    const contact = contactRepo.create({ name, phone, relationship, user });
+    const saved = await contactRepo.save(contact);
 
-    res.json({ success: true, message: "Contact deleted successfully" });
+    return res.status(201).json(toDto(saved));
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
   }
 };
+
+/**
+ * PUT /contact/contacts/:contactId
+ * Body: { name?, phone?, relationship? }
+ * Updates a contact owned by the logged-in user
+ */
+export const updateMyContact = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const contactId = Number(req.params.contactId);
+    const { name, phone, relationship } = req.body || {};
+
+    if (!Number.isFinite(contactId)) {
+      return res.status(400).json({ error: "Invalid contactId" });
+    }
+
+    const repo = AppDataSource.getRepository("Contact");
+
+    const contact = await repo.findOne({
+      where: { contactId, user: { id: userId } },
+      relations: { user: true },
+    });
+
+    if (!contact) return res.status(404).json({ error: "Contact not found" });
+
+    // If phone changes, ensure no duplicates for this user
+    if (phone && phone !== contact.phone) {
+      const dup = await repo.findOne({
+        where: { phone, user: { id: userId } },
+        relations: { user: true },
+      });
+      if (dup) {
+        return res
+          .status(400)
+          .json({ error: "This phone is already saved in your contacts" });
+      }
+      contact.phone = phone;
+    }
+
+    if (name) contact.name = name;
+    if (relationship) contact.relationship = relationship;
+
+    const saved = await repo.save(contact);
+    return res.json(toDto(saved));
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+};
+
+/**
+ * DELETE /contact/contacts/:contactId
+ * Deletes a contact owned by the logged-in user
+ */
+export const deleteMyContact = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const contactId = Number(req.params.contactId);
+
+    if (!Number.isFinite(contactId)) {
+      return res.status(400).json({ error: "Invalid contactId" });
+    }
+
+    const repo = AppDataSource.getRepository("Contact");
+
+    const contact = await repo.findOne({
+      where: { contactId, user: { id: userId } },
+      relations: { user: true },
+    });
+
+    if (!contact) return res.status(404).json({ error: "Contact not found" });
+
+    await repo.remove(contact);
+    return res.json({ success: true });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+};
+
+
+
+// // Controller/ContactController.js
+// import AppDataSource from "../config/data-source.js";
+
+// const pickContactResponse = (c) => ({
+//   contactId: c.contactId,
+//   name: c.name,
+//   relationship: c.relationship,
+//   phone: c.phone,
+// });
+
+// export const getMyContacts = async (req, res) => {
+//   try {
+//     const userId = req.user.id;
+//     const repo = AppDataSource.getRepository("Contact");
+
+//     const contacts = await repo.find({
+//       where: { user: { id: userId } },
+//       relations: { user: true },
+//       select: {
+//         contactId: true,
+//         name: true,
+//         relationship: true,
+//         phone: true,
+//         user: { id: true },
+//       },
+//       order: { contactId: "ASC" },
+//     });
+
+//     // Return as a plain list (best for Flutter)
+//     return res.json(contacts.map(pickContactResponse));
+//   } catch (err) {
+//     return res.status(500).json({ error: err.message });
+//   }
+// };
+
+// export const addMyContact = async (req, res) => {
+//   try {
+//     const userId = req.user.id;
+//     const { name, phone, relationship } = req.body;
+
+//     if (!name || !phone || !relationship) {
+//       return res.status(400).json({ error: "name, phone, relationship required" });
+//     }
+
+//     const userRepo = AppDataSource.getRepository("User");
+//     const contactRepo = AppDataSource.getRepository("Contact");
+
+//     const user = await userRepo.findOneBy({ id: userId });
+//     if (!user) return res.status(404).json({ error: "User not found" });
+
+//     // ✅ Duplicate check ONLY within this user
+//     const existing = await contactRepo.findOne({
+//       where: { phone, user: { id: userId } },
+//       relations: { user: true },
+//     });
+//     if (existing) {
+//       return res.status(400).json({ error: "This phone is already saved in your contacts" });
+//     }
+
+//     const contact = contactRepo.create({ name, phone, relationship, user });
+//     const saved = await contactRepo.save(contact);
+
+//     return res.status(201).json(pickContactResponse(saved));
+//   } catch (err) {
+//     return res.status(500).json({ error: err.message });
+//   }
+// };
+
+// export const updateMyContact = async (req, res) => {
+//   try {
+//     const userId = req.user.id;
+//     const contactId = Number(req.params.contactId);
+//     const { name, relationship, phone } = req.body;
+
+//     const contactRepo = AppDataSource.getRepository("Contact");
+
+//     const contact = await contactRepo.findOne({
+//       where: { contactId, user: { id: userId } },
+//       relations: { user: true },
+//     });
+
+//     if (!contact) {
+//       return res.status(404).json({ error: "Contact not found" });
+//     }
+
+//     // If phone is changing, ensure not duplicated for this user
+//     if (phone && phone !== contact.phone) {
+//       const dup = await contactRepo.findOne({
+//         where: { phone, user: { id: userId } },
+//         relations: { user: true },
+//       });
+//       if (dup) return res.status(400).json({ error: "This phone is already saved in your contacts" });
+//       contact.phone = phone;
+//     }
+
+//     if (name) contact.name = name;
+//     if (relationship) contact.relationship = relationship;
+
+//     const saved = await contactRepo.save(contact);
+//     return res.json(pickContactResponse(saved));
+//   } catch (err) {
+//     return res.status(500).json({ error: err.message });
+//   }
+// };
+
+// export const deleteMyContact = async (req, res) => {
+//   try {
+//     const userId = req.user.id;
+//     const contactId = Number(req.params.contactId);
+
+//     const repo = AppDataSource.getRepository("Contact");
+//     const contact = await repo.findOne({
+//       where: { contactId, user: { id: userId } },
+//       relations: { user: true },
+//     });
+
+//     if (!contact) return res.status(404).json({ error: "Contact not found" });
+
+//     await repo.remove(contact);
+//     return res.json({ success: true });
+//   } catch (err) {
+//     return res.status(500).json({ error: err.message });
+//   }
+// };

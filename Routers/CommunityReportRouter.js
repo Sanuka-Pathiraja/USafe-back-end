@@ -1,7 +1,8 @@
 import express from "express";
 import { createCommunityReport } from "../Controller/CommunityReportController.js";
 import multer from "multer";
-import { authMiddleware } from "../middleware/authMiddleware.js";
+// import { authMiddleware } from "../middleware/authMiddleware.js";
+import authMiddleware from "../middleware/authMiddleware.js";
 
 const communityReportRouter = express.Router();
 
