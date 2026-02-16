@@ -1,12 +1,13 @@
-// Routers/EmergencyRouter.js
 import { Router } from "express";
 import authMiddleware from "../middleware/authMiddleware.js";
 import {
   startEmergency,
   startCallToContact,
   getCallStatus,
-  voiceEventWebhook,
   getEmergencyStatus,
+  voiceEventWebhook,
+  devMarkAnswered,
+  devResetSession,
 } from "../Controller/EmergencyController.js";
 
 const router = Router();
@@ -19,5 +20,9 @@ router.get("/emergency/:sessionId/status", authMiddleware, getEmergencyStatus);
 
 // Vonage webhook (no auth)
 router.post("/webhooks/voice-event", voiceEventWebhook);
+
+// Demo endpoints (auth)
+router.post("/emergency/:sessionId/dev/mark-answered", authMiddleware, devMarkAnswered);
+router.post("/emergency/:sessionId/dev/reset", authMiddleware, devResetSession);
 
 export default router;

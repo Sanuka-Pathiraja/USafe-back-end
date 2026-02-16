@@ -1,7 +1,6 @@
 // Controller/ContactController.js
 import AppDataSource from "../config/data-source.js";
 
-/** Keep API responses consistent for Flutter */
 const toDto = (c) => ({
   contactId: c.contactId,
   name: c.name,
@@ -9,10 +8,6 @@ const toDto = (c) => ({
   phone: c.phone,
 });
 
-/**
- * GET /contact/contacts
- * Returns only the logged-in user's contacts
- */
 export const getMyContacts = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -37,20 +32,13 @@ export const getMyContacts = async (req, res) => {
   }
 };
 
-/**
- * POST /contact/contacts
- * Body: { name, phone, relationship }
- * Adds a contact for the logged-in user
- */
 export const addMyContact = async (req, res) => {
   try {
     const userId = req.user.id;
     const { name, phone, relationship } = req.body || {};
 
     if (!name || !phone || !relationship) {
-      return res
-        .status(400)
-        .json({ error: "name, phone, relationship required" });
+      return res.status(400).json({ error: "name, phone, relationship required" });
     }
 
     const userRepo = AppDataSource.getRepository("User");
@@ -59,16 +47,14 @@ export const addMyContact = async (req, res) => {
     const user = await userRepo.findOneBy({ id: userId });
     if (!user) return res.status(404).json({ error: "User not found" });
 
-    // ✅ Prevent duplicates ONLY for this user
+    // prevent duplicates for THIS user only
     const existing = await contactRepo.findOne({
       where: { phone, user: { id: userId } },
       relations: { user: true },
     });
 
     if (existing) {
-      return res
-        .status(400)
-        .json({ error: "This phone is already saved in your contacts" });
+      return res.status(400).json({ error: "This phone is already saved in your contacts" });
     }
 
     const contact = contactRepo.create({ name, phone, relationship, user });
@@ -80,11 +66,6 @@ export const addMyContact = async (req, res) => {
   }
 };
 
-/**
- * PUT /contact/contacts/:contactId
- * Body: { name?, phone?, relationship? }
- * Updates a contact owned by the logged-in user
- */
 export const updateMyContact = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -104,17 +85,12 @@ export const updateMyContact = async (req, res) => {
 
     if (!contact) return res.status(404).json({ error: "Contact not found" });
 
-    // If phone changes, ensure no duplicates for this user
     if (phone && phone !== contact.phone) {
       const dup = await repo.findOne({
         where: { phone, user: { id: userId } },
         relations: { user: true },
       });
-      if (dup) {
-        return res
-          .status(400)
-          .json({ error: "This phone is already saved in your contacts" });
-      }
+      if (dup) return res.status(400).json({ error: "This phone is already saved in your contacts" });
       contact.phone = phone;
     }
 
@@ -128,10 +104,6 @@ export const updateMyContact = async (req, res) => {
   }
 };
 
-/**
- * DELETE /contact/contacts/:contactId
- * Deletes a contact owned by the logged-in user
- */
 export const deleteMyContact = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -156,6 +128,7 @@ export const deleteMyContact = async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 };
+
 
 
 
