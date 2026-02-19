@@ -10,7 +10,7 @@ import {
   voiceEventWebhook,
   devMarkAnswered,
   devResetSession,
-} from "../Controller/EmergencyController.js";
+} from "../Controller/EmergencyProcessController.js";
 
 const router = Router();
 
