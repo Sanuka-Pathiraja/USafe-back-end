@@ -4,6 +4,7 @@ import {
   startEmergency,
   startCallToContact,
   attemptCallToContact,
+  cancelEmergency,
   callEmergencyServices,
   getCallStatus,
   getEmergencyStatus,
@@ -18,6 +19,7 @@ const router = Router();
 router.post("/emergency/start", authMiddleware, startEmergency);
 router.post("/emergency/:sessionId/call/:contactIndex/start", authMiddleware, startCallToContact);
 router.post("/emergency/:sessionId/call/:contactIndex/attempt", authMiddleware, attemptCallToContact);
+router.post("/emergency/:sessionId/cancel", authMiddleware, cancelEmergency);
 router.post("/emergency/:sessionId/call-119", authMiddleware, callEmergencyServices);
 router.get("/emergency/:sessionId/call/:callId/status", authMiddleware, getCallStatus);
 router.get("/emergency/:sessionId/status", authMiddleware, getEmergencyStatus);

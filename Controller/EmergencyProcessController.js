@@ -152,6 +152,23 @@ function logEvent(req, event, payload = {}) {
   console.log(JSON.stringify(line));
 }
 
+function fail(res, status, code, message, extra = {}) {
+  return res.status(status).json({
+    ok: false,
+    success: false,
+    code,
+    message,
+    ...extra,
+  });
+}
+
+function resolveUnicodeMode(text, requested) {
+  if (requested !== undefined && requested !== null) return Boolean(requested);
+  if (process.env.NOTIFY_SMS_UNICODE === "true") return true;
+  if (process.env.NOTIFY_SMS_UNICODE === "false") return false;
+  return /[^\x00-\x7F]/.test(String(text || ""));
+}
+
 function getSession(sessionId) {
   return emergencySessions.get(sessionId) || null;
 }
@@ -216,11 +233,30 @@ function isValidNotifyLkMobile(n) {
 export const startEmergency = async (req, res) => {
   const userId = req.user.id;
   const startedAt = Date.now();
+  const {
+    locationText,
+    message,
+    unicode: unicodeRequested,
+    dangerTime,
+    time,
+    eventTime,
+    messageMode,
+    useDefaultTemplate,
+  } = req.body || {};
 
   console.log("========================================");
   console.log("🚨 Emergency Start Requested");
   console.log("👤 User ID:", userId);
   console.log("🕒 Time:", new Date().toISOString());
+  logEvent(req, "EMERGENCY_START_REQUEST", {
+    userId,
+    locationText: locationText || null,
+    dangerTime: dangerTime || time || eventTime || null,
+    hasCustomMessage: Boolean(message),
+    messageMode: messageMode || null,
+    useDefaultTemplate: useDefaultTemplate ?? null,
+    unicode: Boolean(unicodeRequested),
+  });
 
   try {
     const contactRepo = AppDataSource.getRepository("Contact");
@@ -243,11 +279,7 @@ export const startEmergency = async (req, res) => {
     if (!contacts || contacts.length === 0) {
       console.log("❌ No emergency contacts saved");
       console.log("========================================");
-      return res.status(400).json({
-        error: "NO_CONTACTS",
-        code: "NO_CONTACTS",
-        message: "No emergency contacts saved",
-      });
+      return fail(res, 400, "NO_CONTACTS", "No emergency contacts saved");
     }
 
     // Build target list with normalization + validation for Notify.lk
@@ -278,10 +310,7 @@ export const startEmergency = async (req, res) => {
     if (validNumbers.length === 0) {
       console.log("❌ No valid phone numbers after normalization");
       console.log("========================================");
-      return res.status(400).json({
-        error: "NO_VALID_NUMBERS",
-        code: "NO_VALID_NUMBERS",
-        message: "No valid phone numbers found in contacts",
+      return fail(res, 400, "NO_VALID_NUMBERS", "No valid phone numbers found in contacts", {
         invalid: targets
           .filter((t) => !t.valid)
           .map((t) => ({ contactId: t.contactId, name: t.name, phone: t.rawPhone })),
@@ -328,8 +357,35 @@ export const startEmergency = async (req, res) => {
       updatedAt: Date.now(),
     });
 
-    const msg = process.env.SOS_MESSAGE || "🚨 SOS! Immediate help needed.";
-    const unicode = process.env.NOTIFY_SMS_UNICODE === "true";
+    const safeLocation = String(locationText || "").trim() || "Unknown location";
+    const rawDangerTime = dangerTime || time || eventTime;
+    let safeDangerTime = new Date().toISOString();
+    if (rawDangerTime !== undefined && rawDangerTime !== null && String(rawDangerTime).trim() !== "") {
+      const parsed = new Date(rawDangerTime);
+      safeDangerTime = Number.isNaN(parsed.getTime()) ? String(rawDangerTime) : parsed.toISOString();
+    }
+
+    const defaultEmergencyMessage =
+      `USafe Alert ⚠️\n` +
+      `Danger detected\n` +
+      `Location: ${safeLocation}\n` +
+      `Time: ${safeDangerTime}`;
+    const customMessage = String(message || "").trim();
+    const isExactMode = String(messageMode || "").toLowerCase() === "exact";
+    const useTemplateFlag = useDefaultTemplate === undefined ? null : Boolean(useDefaultTemplate);
+    const shouldUseDefaultTemplate = useTemplateFlag === null ? !isExactMode : useTemplateFlag;
+    const msg = !customMessage
+      ? defaultEmergencyMessage
+      : shouldUseDefaultTemplate
+        ? `${customMessage}\nLocation: ${safeLocation}\nTime: ${safeDangerTime}`
+        : customMessage;
+    const renderMode = !customMessage
+      ? "default-template"
+      : shouldUseDefaultTemplate
+        ? "custom-plus-location-time"
+        : "custom-message";
+    const includesLocationTime = renderMode !== "custom-message";
+    const unicode = resolveUnicodeMode(msg, unicodeRequested);
 
     console.log("📨 Sending Notify.lk SMS to:", validNumbers);
     for (const t of validTargets) {
@@ -381,15 +437,10 @@ export const startEmergency = async (req, res) => {
       sent = (smsReport.singles || []).filter((s) => s.ok).length;
       failed = Math.max(0, attempted - sent);
 
-      const success = attempted > 0 && failed === 0;
-      const code = success
-        ? "OK"
-        : (smsReport.failures || []).some((f) => /insufficient|low\s*fund|balance/i.test(String(f.error || "")))
-          ? "LOW_FUNDS"
-          : sent > 0
-            ? "PARTIAL_SEND"
-            : "SEND_FAILED";
-      const message = success
+      const lowFunds = (smsReport.failures || []).some((f) => /insufficient|low\s*fund|balance/i.test(String(f.error || "")));
+      const code = failed === 0 ? "OK" : sent > 0 ? "PARTIAL_SEND" : lowFunds ? "LOW_FUNDS" : "SEND_FAILED";
+      const success = sent > 0;
+      const message = code === "OK"
         ? "Messages sent to all emergency contacts"
         : code === "LOW_FUNDS"
           ? "Insufficient SMS balance"
@@ -398,7 +449,7 @@ export const startEmergency = async (req, res) => {
             : "Failed to send emergency messages";
 
       session.smsReport = smsReport;
-      session.messaging = { success, code, message, attempted, sent, failed };
+      session.messaging = { success, code, message, attempted, sent, failed, renderMode, includesLocationTime };
       touchSession(session);
     }
 
@@ -430,6 +481,8 @@ export const startEmergency = async (req, res) => {
       attempted: messaging.attempted,
       sent: messaging.sent,
       failed: messaging.failed,
+      renderMode,
+      includesLocationTime,
       elapsedMs: Date.now() - startedAt,
     });
 
@@ -439,6 +492,8 @@ export const startEmergency = async (req, res) => {
       success: !!messaging.success,
       code: messaging.code,
       message: messaging.message,
+      renderMode,
+      includesLocationTime,
       messaging: {
         attempted: messaging.attempted,
         sent: messaging.sent,
@@ -459,11 +514,7 @@ export const startEmergency = async (req, res) => {
   } catch (err) {
     console.error("❌ Emergency start failed:", err.message);
     console.log("========================================");
-    return res.status(500).json({
-      error: "INTERNAL_ERROR",
-      code: "INTERNAL_ERROR",
-      message: err.message || "Internal server error",
-    });
+    return fail(res, 500, "INTERNAL_ERROR", err.message || "Internal server error");
   }
 };
 
@@ -481,21 +532,21 @@ export const startCallToContact = async (req, res) => {
     const userId = req.user.id;
 
     const session = getSession(sessionId);
-    if (!session) return res.status(404).json({ error: "Session not found" });
-    if (session.userId !== userId) return res.status(403).json({ error: "Forbidden" });
+    if (!session) return fail(res, 404, "SESSION_NOT_FOUND", "Session not found");
+    if (session.userId !== userId) return fail(res, 403, "FORBIDDEN", "Forbidden");
 
     // stop future calls if already answered
     if (session.status === "ANSWERED") {
-      return res.status(409).json({ message: "Already answered", answeredBy: session.answeredBy });
+      return fail(res, 409, "ALREADY_ANSWERED", "Already answered", { answeredBy: session.answeredBy });
     }
 
     const idx = Number(contactIndex);
     if (!Number.isFinite(idx) || idx < 1 || idx > session.contacts.length) {
-      return res.status(404).json({ error: "CONTACT_NOT_FOUND", message: "contactIndex not found" });
+      return fail(res, 404, "CONTACT_NOT_FOUND", "contactIndex not found");
     }
 
     const to = (session.contacts[idx - 1]?.phone || "").trim();
-    if (!to) return res.status(500).json({ error: "Missing phone for selected contact" });
+    if (!to) return fail(res, 500, "MISSING_PHONE", "Missing phone for selected contact");
 
     let callId;
     let demo = false;
@@ -525,7 +576,7 @@ export const startCallToContact = async (req, res) => {
 
     return res.json({ callId, demo });
   } catch (err) {
-    return res.status(500).json({ error: err.message });
+    return fail(res, 500, "INTERNAL_ERROR", err.message || "Internal server error");
   }
 };
 
@@ -544,8 +595,8 @@ export const attemptCallToContact = async (req, res) => {
     const timeoutSec = Math.max(5, Math.min(90, Number.isFinite(rawTimeout) ? rawTimeout : 30));
 
     const session = getSession(sessionId);
-    if (!session) return res.status(404).json({ error: "Session not found" });
-    if (session.userId !== userId) return res.status(403).json({ error: "Forbidden" });
+    if (!session) return fail(res, 404, "SESSION_NOT_FOUND", "Session not found");
+    if (session.userId !== userId) return fail(res, 403, "FORBIDDEN", "Forbidden");
 
     const idx = Number(contactIndex);
     if (!Number.isFinite(idx) || idx < 1 || idx > session.contacts.length) {
@@ -559,7 +610,7 @@ export const attemptCallToContact = async (req, res) => {
         reason: "contactIndex not found",
         code: "CONTACT_NOT_FOUND",
       });
-      return res.status(404).json({ error: "CONTACT_NOT_FOUND", message: "contactIndex not found" });
+      return fail(res, 404, "CONTACT_NOT_FOUND", "contactIndex not found");
     }
 
     if (session.status === "ANSWERED") {
@@ -586,7 +637,7 @@ export const attemptCallToContact = async (req, res) => {
 
     const contact = session.contacts[idx - 1] || {};
     const to = (session.contacts[idx - 1]?.phone || "").trim();
-    if (!to) return res.status(500).json({ error: "Missing phone for selected contact" });
+    if (!to) return fail(res, 500, "MISSING_PHONE", "Missing phone for selected contact");
     logEvent(req, "CALL_ATTEMPT_STARTED", {
       sessionId,
       userId,
@@ -791,8 +842,8 @@ export const callEmergencyServices = async (req, res) => {
     const callStartedAt = Date.now();
 
     const session = getSession(sessionId);
-    if (!session) return res.status(404).json({ error: "Session not found" });
-    if (session.userId !== userId) return res.status(403).json({ error: "Forbidden" });
+    if (!session) return fail(res, 404, "SESSION_NOT_FOUND", "Session not found");
+    if (session.userId !== userId) return fail(res, 403, "FORBIDDEN", "Forbidden");
 
     logEvent(req, "CALL_119_STARTED", {
       sessionId,
@@ -947,11 +998,11 @@ export const getCallStatus = async (req, res) => {
     const userId = req.user.id;
 
     const session = getSession(sessionId);
-    if (!session) return res.status(404).json({ error: "Session not found" });
-    if (session.userId !== userId) return res.status(403).json({ error: "Forbidden" });
+    if (!session) return fail(res, 404, "SESSION_NOT_FOUND", "Session not found");
+    if (session.userId !== userId) return fail(res, 403, "FORBIDDEN", "Forbidden");
 
     const call = session.calls[callId];
-    if (!call) return res.status(404).json({ error: "Call not found" });
+    if (!call) return fail(res, 404, "CALL_NOT_FOUND", "Call not found");
 
     return res.json({
       status: call.status,
@@ -961,7 +1012,7 @@ export const getCallStatus = async (req, res) => {
       sessionStatus: session.status,
     });
   } catch (err) {
-    return res.status(500).json({ error: err.message });
+    return fail(res, 500, "INTERNAL_ERROR", err.message || "Internal server error");
   }
 };
 
@@ -976,8 +1027,8 @@ export const getEmergencyStatus = async (req, res) => {
     const userId = req.user.id;
 
     const session = getSession(sessionId);
-    if (!session) return res.status(404).json({ error: "Session not found" });
-    if (session.userId !== userId) return res.status(403).json({ error: "Forbidden" });
+    if (!session) return fail(res, 404, "SESSION_NOT_FOUND", "Session not found");
+    if (session.userId !== userId) return fail(res, 403, "FORBIDDEN", "Forbidden");
 
     return res.json({
       sessionId: session.id,
@@ -992,7 +1043,98 @@ export const getEmergencyStatus = async (req, res) => {
       smsReport: session.smsReport || null,
     });
   } catch (err) {
-    return res.status(500).json({ error: err.message });
+    return fail(res, 500, "INTERNAL_ERROR", err.message || "Internal server error");
+  }
+};
+
+/**
+ * POST /emergency/:sessionId/cancel
+ * Auth required
+ * Marks session cancelled and notifies contacts that user cancelled the process.
+ */
+export const cancelEmergency = async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const userId = req.user.id;
+
+    const session = getSession(sessionId);
+    if (!session) return fail(res, 404, "SESSION_NOT_FOUND", "Session not found");
+    if (session.userId !== userId) return fail(res, 403, "FORBIDDEN", "Forbidden");
+
+    if (session.status === "CANCELLED") {
+      return res.json({
+        ok: true,
+        success: true,
+        code: "ALREADY_CANCELLED",
+        message: "This emergency was already cancelled.",
+        sessionId,
+        cancelled: true,
+        emergencyServicesCalled: !!session.emergencyServicesCalled,
+      });
+    }
+
+    session.status = "CANCELLED";
+    touchSession(session);
+
+    const cancelMessage = process.env.SOS_CANCEL_MESSAGE || "User has cancelled the emergency process.";
+    const unicode = resolveUnicodeMode(cancelMessage);
+
+    const notifyTargets = (session.contacts || [])
+      .map((c) => String(c?.phone || "").trim())
+      .filter(Boolean);
+
+    const notifyResults = await Promise.allSettled(
+      notifyTargets.map((to) =>
+        sendNotifySMS({
+          to,
+          message: cancelMessage,
+          unicode,
+        })
+      )
+    );
+
+    const sent = notifyResults.filter((r) => r.status === "fulfilled").length;
+    const failed = notifyResults.length - sent;
+    const userCancelMessage =
+      failed === 0
+        ? "Emergency cancelled. Your contacts were informed."
+        : sent > 0
+          ? "Emergency cancelled. Some contacts could not be informed."
+          : "Emergency cancelled. We could not notify your contacts.";
+
+    session.cancelReport = {
+      notified: notifyResults.length,
+      sent,
+      failed,
+      at: Date.now(),
+    };
+    touchSession(session);
+
+    logEvent(req, "EMERGENCY_CANCELLED", {
+      sessionId,
+      userId,
+      notified: notifyResults.length,
+      sent,
+      failed,
+      emergencyServicesCalled: !!session.emergencyServicesCalled,
+    });
+
+    return res.json({
+      ok: true,
+      success: true,
+      code: "CANCELLED",
+      message: userCancelMessage,
+      sessionId,
+      cancelled: true,
+      emergencyServicesCalled: !!session.emergencyServicesCalled,
+      cancellationMessaging: {
+        attempted: notifyResults.length,
+        sent,
+        failed,
+      },
+    });
+  } catch (err) {
+    return fail(res, 500, "INTERNAL_ERROR", err.message || "Internal server error");
   }
 };
 
@@ -1102,12 +1244,12 @@ export const devMarkAnswered = async (req, res) => {
     const userId = req.user.id;
 
     const session = getSession(sessionId);
-    if (!session) return res.status(404).json({ error: "Session not found" });
-    if (session.userId !== userId) return res.status(403).json({ error: "Forbidden" });
+    if (!session) return fail(res, 404, "SESSION_NOT_FOUND", "Session not found");
+    if (session.userId !== userId) return fail(res, 403, "FORBIDDEN", "Forbidden");
 
     const idx = Number(req.query.contactIndex || 1);
     if (!Number.isFinite(idx) || idx < 1 || idx > session.contacts.length) {
-      return res.status(400).json({ error: "Invalid contactIndex" });
+      return fail(res, 400, "INVALID_CONTACT_INDEX", "Invalid contactIndex");
     }
 
     session.status = "ANSWERED";
@@ -1130,7 +1272,7 @@ export const devMarkAnswered = async (req, res) => {
 
     return res.json({ ok: true, answeredBy: session.answeredBy });
   } catch (err) {
-    return res.status(500).json({ error: err.message });
+    return fail(res, 500, "INTERNAL_ERROR", err.message || "Internal server error");
   }
 };
 
@@ -1145,8 +1287,8 @@ export const devResetSession = async (req, res) => {
     const userId = req.user.id;
 
     const session = getSession(sessionId);
-    if (!session) return res.status(404).json({ error: "Session not found" });
-    if (session.userId !== userId) return res.status(403).json({ error: "Forbidden" });
+    if (!session) return fail(res, 404, "SESSION_NOT_FOUND", "Session not found");
+    if (session.userId !== userId) return fail(res, 403, "FORBIDDEN", "Forbidden");
 
     session.status = "ACTIVE";
     session.answeredBy = null;
@@ -1159,6 +1301,6 @@ export const devResetSession = async (req, res) => {
 
     return res.json({ ok: true, sessionStatus: session.status });
   } catch (err) {
-    return res.status(500).json({ error: err.message });
+    return fail(res, 500, "INTERNAL_ERROR", err.message || "Internal server error");
   }
 };

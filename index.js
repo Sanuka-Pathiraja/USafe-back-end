@@ -40,6 +40,14 @@ const app = express();
 
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
+app.use((req, res, next) => {
+  const baseJson = res.json.bind(res);
+  res.json = (body) => {
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    return baseJson(body);
+  };
+  next();
+});
 
 app.get("/health", (req, res) => {
   res.json({ ok: true, message: "Backend is reachable" });

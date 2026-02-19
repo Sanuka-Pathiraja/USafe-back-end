@@ -66,10 +66,17 @@
 ```json
 {
   "locationText": "Colombo Fort",
-  "message": "USafe emergency process test message",
+  "dangerTime": "2026-02-19T10:30:00+05:30",
+  "message": "",
+  "messageMode": "exact",
+  "useDefaultTemplate": true,
   "unicode": false
 }
 ```
+- Notes:
+  - If `message` is empty, backend sends full default template with location/time.
+  - If `message` is provided, backend appends location/time by default.
+  - To send exact custom text only, set `messageMode: "exact"` OR `useDefaultTemplate: false`.
 - Expected logs:
   - `EMERGENCY_PROCESS_START`
   - `EMERGENCY_PROCESS_RESULT` or `EMERGENCY_PROCESS_FAILED`
