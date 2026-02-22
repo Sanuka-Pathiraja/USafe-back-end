@@ -1,8 +1,17 @@
 import dotenv from "dotenv";
 dotenv.config();
 
+import { printEnvironmentStatus } from "./utils/envValidator.js";
+
+// Validate environment before starting
+if (!printEnvironmentStatus()) {
+  console.error("❌ Environment validation failed. Please fix the issues above.");
+  process.exit(1);
+}
+
 import express from "express";
 import cors from "cors";
+import http from "http";
 
 import AppDataSource from "./config/data-source.js";
 import { checkBalance } from "./CallFeat/quicksend.js";
@@ -14,6 +23,9 @@ import Userrouter from "./Routers/UserRouter.js";
 import contactRouter from "./Routers/ContactRouter.js";
 import communityReportRouter from "./Routers/CommunityReportRouter.js";
 import guardianRouter from "./Routers/guardianRouter.js";
+import healthRouter from "./Routers/healthRouter.js";
+import { standardLimiter, generousLimiter } from "./middleware/rateLimiter.js";
+import { initializeWebSocket } from "./utils/wsHub.js";
 
 /* ===================== FEATURE TOGGLES ===================== */
 const DISABLE_CALLS = process.env.DISABLE_CALLS === "true";
@@ -29,14 +41,18 @@ console.log("---");
 
 /* ===================== APP ===================== */
 const app = express();
+const server = http.createServer(app);
 
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
-app.get("/health", (req, res) => {
-  res.json({ ok: true, message: "Backend is reachable" });
-});
+// Apply rate limiting based on environment
+if (process.env.NODE_ENV === "production") {
+  app.use("/api", standardLimiter);
+  app.use("/health", generousLimiter);
+}
 
+app.use("/", healthRouter);
 app.use("/", callRouter);
 app.use("/", smsRouter);
 app.use("/", bulkSmsRouter);
@@ -62,21 +78,26 @@ if (process.env.NODE_ENV === "development") {
 }
 
 /* ===================== START SERVER ===================== */
-app.listen(5000, async () => {
-  console.log("🚀 Server running at http://localhost:5000");
-
-  // Optional: balance check (safe, read-only)
-  try {
-    await checkBalance();
-  } catch (error) {
-    console.error("❌ Balance check failed:", error.message);
-  }
-
-  // DB init
+async function startServer() {
   try {
     await AppDataSource.initialize();
-    console.log("✅ Data Source initialized! Connected to Supabase.");
+    console.log("✅ Data Source initialized! Connected to database.");
   } catch (err) {
     console.error("❌ Error during Data Source initialization:", err);
+    process.exit(1);
   }
-});
+
+  const port = Number(process.env.PORT || 5000);
+  initializeWebSocket(server);
+  server.listen(port, async () => {
+    console.log(`🚀 Server running at http://localhost:${port}`);
+
+    try {
+      await checkBalance();
+    } catch (error) {
+      console.error("❌ Balance check failed:", error.message);
+    }
+  });
+}
+
+startServer();

@@ -2,6 +2,8 @@ import { Router } from "express";
 import { getSafetyScore } from "../Controller/guardianController.js";
 import { createGuardianRoute, listGuardianRoutes } from "../Controller/guardianRoutesController.js";
 import { sendCheckpointAlert } from "../Controller/guardianAlertController.js";
+import { trackGuardianProgress } from "../Controller/guardianTrackingController.js";
+import { authMiddleware } from "../middleware/authMiddleware.js";
 
 const router = Router();
 
@@ -11,9 +13,13 @@ router.use((req, res, next) => {
 	next();
 });
 
+// Safety score is public (read-only calculation, rate-limited)
 router.get("/safety-score", getSafetyScore);
-router.post("/alert", sendCheckpointAlert);
-router.post("/routes", createGuardianRoute);
-router.get("/routes", listGuardianRoutes);
+
+// Protected endpoints require authentication
+router.post("/alert", authMiddleware, sendCheckpointAlert);
+router.post("/routes", authMiddleware, createGuardianRoute);
+router.get("/routes", authMiddleware, listGuardianRoutes);
+router.post("/track", authMiddleware, trackGuardianProgress);
 
 export default router;

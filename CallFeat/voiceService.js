@@ -1,19 +1,28 @@
 import { Vonage } from "@vonage/server-sdk";
 import fs from "fs";
 
-if (!process.env.VONAGE_PRIVATE_KEY) {
-  throw new Error("❌ VONAGE_PRIVATE_KEY is missing in .env");
-}
+// Lazy initialization - only validate when function is called
+let vonage = null;
 
-const privateKeyPath = process.env.VONAGE_PRIVATE_KEY;
-if (!fs.existsSync(privateKeyPath)) {
-  throw new Error(`❌ Private key file not found at: ${privateKeyPath}`);
-}
+function initVonage() {
+  if (vonage) return vonage;
 
-const vonage = new Vonage({
-  applicationId: process.env.VONAGE_APPLICATION_ID,
-  privateKey: fs.readFileSync(privateKeyPath),
-});
+  if (!process.env.VONAGE_PRIVATE_KEY) {
+    throw new Error("❌ VONAGE_PRIVATE_KEY is missing in .env");
+  }
+
+  const privateKeyPath = process.env.VONAGE_PRIVATE_KEY;
+  if (!fs.existsSync(privateKeyPath)) {
+    throw new Error(`❌ Private key file not found at: ${privateKeyPath}`);
+  }
+
+  vonage = new Vonage({
+    applicationId: process.env.VONAGE_APPLICATION_ID,
+    privateKey: fs.readFileSync(privateKeyPath),
+  });
+
+  return vonage;
+}
 
 export default async function makeOutboundCall(toOverride) {
   const to = (toOverride || process.env.SOS_CALL_TO || "").trim();
@@ -27,11 +36,13 @@ export default async function makeOutboundCall(toOverride) {
     throw new Error("❌ VONAGE_FROM_NUMBER is missing in .env");
   }
 
+  const vonageClient = initVonage();
+
   try {
     console.log("📞 Attempting to call:", to);
     console.log("📞 From number:", process.env.VONAGE_FROM_NUMBER);
 
-    const response = await vonage.voice.createOutboundCall({
+    const response = await vonageClient.voice.createOutboundCall({
       to: [{ type: "phone", number: to }],
       from: { type: "phone", number: process.env.VONAGE_FROM_NUMBER },
       ncco: [
