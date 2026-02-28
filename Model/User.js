@@ -15,6 +15,10 @@ export default new EntitySchema({
     phone: { type: "varchar" },
     email: { type: "varchar" },
     password: { type: "varchar" },
+    hasMedicalId: {
+      type: "boolean",
+      default: false,
+    },
     authProvider: {
       type: "varchar",
       default: "local", // local | google

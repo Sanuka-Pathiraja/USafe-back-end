@@ -31,6 +31,7 @@ import emergencyRouter from "./Routers/EmergencyRouter.js";
 import notifyLkSmsRouter from "./Routers/NofityLkSmsRouter.js";
 import notifyLkBulkSmsRouter from "./Routers/NotifyLkBulkSmsRouter.js";
 import emergencyProcessRouter from "./Routers/EmergencyProcessRouter.js";
+import safetyScoreRouter from "./Routers/SafetyScoreRouter.js";
 
 import { standardLimiter, generousLimiter } from "./middleware/rateLimiter.js";
 import { initializeWebSocket } from "./utils/wsHub.js";
@@ -84,6 +85,7 @@ app.use("/", emergencyRouter);
 app.use("/", notifyLkSmsRouter);
 app.use("/", notifyLkBulkSmsRouter);
 app.use("/", emergencyProcessRouter);
+app.use("/", safetyScoreRouter);
 
 /*======================================Stripe Routes=========================================*/
 import stripeRouter from "./Routers/stripeRouter.js";
