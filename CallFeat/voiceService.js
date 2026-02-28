@@ -2,26 +2,37 @@
 import { Vonage } from "@vonage/server-sdk";
 import fs from "fs";
 
-if (!process.env.VONAGE_PRIVATE_KEY) {
-  throw new Error("❌ VONAGE_PRIVATE_KEY is missing in .env");
-}
+let vonage = null;
 
-const privateKeyPath = process.env.VONAGE_PRIVATE_KEY;
-if (!fs.existsSync(privateKeyPath)) {
-  throw new Error(`❌ Private key file not found at: ${privateKeyPath}`);
+try {
+  if (!process.env.VONAGE_PRIVATE_KEY) {
+    console.warn("⚠️ VONAGE_PRIVATE_KEY is missing in .env. Calling features will be disabled.");
+  } else {
+    const privateKeyPath = process.env.VONAGE_PRIVATE_KEY;
+    if (!fs.existsSync(privateKeyPath)) {
+      console.warn(`⚠️ Private key file not found at: ${privateKeyPath}. Calling features will be disabled.`);
+    } else {
+      vonage = new Vonage({
+        applicationId: process.env.VONAGE_APPLICATION_ID,
+        privateKey: fs.readFileSync(privateKeyPath),
+      });
+    }
+  }
+} catch (error) {
+  console.warn("⚠️ Failed to initialize Vonage client. Calling features will be disabled:", error.message);
 }
-
-const vonage = new Vonage({
-  applicationId: process.env.VONAGE_APPLICATION_ID,
-  privateKey: fs.readFileSync(privateKeyPath),
-});
 
 export default async function makeOutboundCall(toOverride, opts = {}) {
   const to = (toOverride || "").trim();
   const text = process.env.SOS_CALL_TEXT || "Emergency alert from USafe.";
 
   if (!to) throw new Error("❌ Missing call target number.");
-  if (!process.env.VONAGE_FROM_NUMBER) throw new Error("❌ VONAGE_FROM_NUMBER is missing in .env");
+  if (!process.env.VONAGE_FROM_NUMBER) console.warn("⚠️ VONAGE_FROM_NUMBER is missing in .env");
+
+  if (!vonage) {
+    console.warn("⚠️ Vonage client is not initialized. Outbound call skipped.");
+    throw new Error("Vonage client is not configured.");
+  }
 
   // In real mode, you need this:
   const publicBaseUrl = (opts.publicBaseUrl || process.env.PUBLIC_BASE_URL || "").trim();

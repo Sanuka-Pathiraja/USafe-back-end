@@ -1,0 +1,6 @@
+Error: Neither apiKey nor config.authenticator provided
+    at Stripe._setAuthenticator (file:///D:/merge%20the%20codes/USafe-back-end-merged/node_modules/stripe/esm/stripe.core.js:155:23)
+    at new Stripe (file:///D:/merge%20the%20codes/USafe-back-end-merged/node_modules/stripe/esm/stripe.core.js:93:14)
+    at file:///D:/merge%20the%20codes/USafe-back-end-merged/Controller/StripeWebHookHandler.js:2:16
+    at ModuleJob.run (node:internal/modules/esm/module_job:413:25)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:660:26)

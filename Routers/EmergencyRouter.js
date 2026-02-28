@@ -1,5 +1,5 @@
 import { Router } from "express";
-import authMiddleware from "../middleware/authMiddleware.js";
+import { authMiddleware } from "../middleware/authMiddleware.js";
 import {
   startEmergency,
   startCallToContact,
@@ -16,6 +16,7 @@ import {
 const router = Router();
 
 // App endpoints (auth)
+router.post("/sos", authMiddleware, startEmergency);
 router.post("/emergency/start", authMiddleware, startEmergency);
 router.post("/emergency/:sessionId/call/:contactIndex/start", authMiddleware, startCallToContact);
 router.post("/emergency/:sessionId/call/:contactIndex/attempt", authMiddleware, attemptCallToContact);

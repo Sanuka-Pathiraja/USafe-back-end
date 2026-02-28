@@ -1,6 +1,9 @@
 import { DataSource } from "typeorm";
 import "dotenv/config";
 
+const dbConnectionTimeout = Number(process.env.DB_CONNECTION_TIMEOUT_MS || 10000);
+const useSsl = process.env.DB_SSL !== "false";
+
 const AppDataSource = new DataSource({
   type: "postgres",
   host: process.env.DB_HOST,
@@ -12,8 +15,8 @@ const AppDataSource = new DataSource({
   logging: true,
   entities: ["./Model/User.js", "./Model/Contact.js", "./Model/CommunityReport.js", "./Model/Payment.js"],
   migrations: ["src/migrations/*.ts"],
-  ssl: { rejectUnauthorized: false },
-  extra: { max: 20, connectionTimeoutMillis: 2000 },
+  ssl: useSsl ? { rejectUnauthorized: false } : false,
+  extra: { max: 20, connectionTimeoutMillis: dbConnectionTimeout },
 });
 
 export default AppDataSource;

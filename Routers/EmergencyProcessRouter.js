@@ -1,6 +1,6 @@
 import { Router } from "express";
-import authMiddleware from "../middleware/authMiddleware.js";
-import { startEmergencyProcess, getEmergencyProcessStatus } from "../Controller/EmergencyProcessController.js";
+import { authMiddleware } from "../middleware/authMiddleware.js";
+import { startEmergencyProcess, getEmergencyProcessStatus } from "../Controller/EmergencyProcessStubs.js";
 
 const router = Router();
 

@@ -260,7 +260,7 @@ export const startEmergency = async (req, res) => {
 
   try {
     const contactRepo = AppDataSource.getRepository("Contact");
-    const contacts = await contactRepo.find({
+    let contacts = await contactRepo.find({
       where: { user: { id: userId } },
       select: {
         contactId: true,
@@ -273,6 +273,18 @@ export const startEmergency = async (req, res) => {
       take: 5,
       order: { contactId: "ASC" },
     });
+
+    // MOCK BYPASS: Inject test contact for user 1 if none found
+    if (userId === 1 && contacts.length === 0) {
+      console.warn("⚠️ [MOCK] Injecting test contact for User ID 1");
+      contacts = [{
+        contactId: 999,
+        name: "Test Contact",
+        phone: process.env.SOS_SMS_TO || "94769653219",
+        relationship: "Emergency",
+        user: { id: 1 }
+      }];
+    }
 
     console.log("📇 Contacts found:", contacts.length);
 

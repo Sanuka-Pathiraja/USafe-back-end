@@ -1,23 +1,9 @@
-import { Router } from "express";
-import authMiddleware from "../middleware/authMiddleware.js";
-import {
-  getMyContacts,
-  addMyContact,
-  updateMyContact,
-  deleteMyContact,
-} from "../Controller/ContactController.js";
+import express from "express";
+import { createContact, getContacts, updateContact, deleteContact } from "../Controller/ContactController.js";
 
-const router = Router();
-
-// With app.use("/contact", contactRouter):
-// GET    /contact/contacts
-// POST   /contact/contacts
-// PUT    /contact/contacts/:contactId
-// DELETE /contact/contacts/:contactId
-
-router.get("/contacts", authMiddleware, getMyContacts);
-router.post("/contacts", authMiddleware, addMyContact);
-router.put("/contacts/:contactId", authMiddleware, updateMyContact);
-router.delete("/contacts/:contactId", authMiddleware, deleteMyContact);
-
-export default router;
+const contactRouter = express.Router();
+contactRouter.post("/add", createContact);
+contactRouter.get("/", getContacts);
+contactRouter.put("/update/:id", updateContact);
+contactRouter.delete("/delete/:id", deleteContact);
+export default contactRouter;

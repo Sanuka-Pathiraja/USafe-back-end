@@ -1,5 +1,14 @@
 import Stripe from "stripe";
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+let stripe = null;
+if (process.env.STRIPE_SECRET_KEY) {
+  try {
+    stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+  } catch (error) {
+    console.warn("⚠️ Failed to initialize Stripe client:", error.message);
+  }
+} else {
+  console.warn("⚠️ STRIPE_SECRET_KEY is missing. Payment features will be disabled.");
+}
 
 import { supabase } from "../config/supabase.js";
 
