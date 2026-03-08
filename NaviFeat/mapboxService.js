@@ -9,3 +9,5 @@ const getRoutesFromMapbox = async (start, end) => {
 
     return response.data.routes;
 };
+
+module.exports = { getRoutesFromMapbox };
