@@ -82,15 +82,47 @@ export const getUsers = async (req, res) => {
 /* ================= GET USER BY JWT ================= */
 export const getUserById = async (req, res) => {
   try {
-    const repo = AppDataSource.getRepository("User");
-    const userId = req.user.id; // ✅ get from authMiddleware
-    const user = await repo.findOneBy({ id: userId });
+    const userRepo = AppDataSource.getRepository("User");
+    const reportRepo = AppDataSource.getRepository("CommunityReport");
+    const userId = req.user.id;
+    const user = await userRepo.findOneBy({ id: userId });
     if (!user) return res.status(404).json({ error: "User not found" });
 
+    const communityReportCount = await reportRepo.count({
+      where: { user: { id: userId } },
+    });
+
     delete user.password;
-    res.json(user);
+    res.json({
+      ...user,
+      communityReportCount,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+};
+
+/* ================= GET MY COMMUNITY REPORT COUNT ================= */
+export const getMyCommunityReportCount = async (req, res) => {
+  try {
+    const userRepo = AppDataSource.getRepository("User");
+    const reportRepo = AppDataSource.getRepository("CommunityReport");
+    const userId = req.user.id;
+
+    const user = await userRepo.findOneBy({ id: userId });
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    const communityReportCount = await reportRepo.count({
+      where: { user: { id: userId } },
+    });
+
+    res.json({
+      success: true,
+      userId,
+      communityReportCount,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
   }
 };
 
@@ -126,7 +158,7 @@ export const getUserContacts = async (req, res) => {
 export const updateUser = async (req, res) => {
   try {
     const userRepo = AppDataSource.getRepository("User");
-    const userId = req.user.id; // ✅ from JWT
+    const userId = req.user.id;
 
     const user = await userRepo.findOneBy({ id: userId });
     if (!user) return res.status(404).json({ error: "User not found" });
@@ -155,7 +187,7 @@ export const updateUser = async (req, res) => {
 export const deleteUser = async (req, res) => {
   try {
     const userRepo = AppDataSource.getRepository("User");
-    const userId = req.user.id; // from JWT
+    const userId = req.user.id;
 
     const user = await userRepo.findOneBy({ id: userId });
     if (!user) return res.status(404).json({ error: "User not found" });

@@ -3,6 +3,7 @@ import {
   createUser,
   getUsers,
   getUserById,
+  getMyCommunityReportCount,
   getUserContacts,
   loginUser,
   updateUser,
@@ -20,6 +21,7 @@ Userrouter.post("/googleLogin", googleLogin);
 Userrouter.get("/", getUsers);
 
 Userrouter.get("/get", authMiddleware, getUserById);
+Userrouter.get("/community-report-count", authMiddleware, getMyCommunityReportCount);
 
 // ✅ protect this (your controller uses req.user.id)
 Userrouter.get("/contacts", authMiddleware, getUserContacts);
