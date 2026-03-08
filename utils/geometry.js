@@ -23,4 +23,5 @@ function circleToPolygon(centerLon, centerLat, radiusMeters, numPoints = 32) {
     
   }
 }
+module.exports = { circleToPolygon };
 
