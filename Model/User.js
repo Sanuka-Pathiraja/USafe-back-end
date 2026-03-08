@@ -15,6 +15,14 @@ export default new EntitySchema({
     phone: { type: "varchar" },
     email: { type: "varchar" },
     password: { type: "varchar" },
+    avatar: {
+      type: "varchar",
+      nullable: true,
+    },
+    birthday: {
+      type: "varchar",
+      nullable: true,
+    },
     authProvider: {
       type: "varchar",
       default: "local", // local | google
