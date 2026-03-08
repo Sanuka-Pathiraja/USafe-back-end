@@ -4,3 +4,6 @@ const cors = require("cors");
 const bodyParser = require("body-parser");
 
 const routeRouter = require("./Router/routeRouter");
+
+const app = express();
+const PORT = 3000;
