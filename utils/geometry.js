@@ -6,7 +6,8 @@ function circleToPolygon(centerLon, centerLat, radiusMeters, numPoints = 32) {
     for (let i = 0; i < numPoints; i++) {
 
         const angle = (i / numPoints) * 2 * Math.PI;
-
+        const dx = radiusMeters * Math.cos(angle);
+        const dy = radiusMeters * Math.sin(angle);
     
     
   }
