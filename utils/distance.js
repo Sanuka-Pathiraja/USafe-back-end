@@ -13,4 +13,21 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
     return R * c;
 
 }
-function routeIntersectsZones(routeCoords, redZones) {}
+function routeIntersectsZones(routeCoords, redZones) {
+    for (let coord of routeCoords) {
+        for (let zone of redZones) {
+          const distance = calculateDistance(
+            coord[1],
+            coord[0],
+            zone.lat,
+            zone.lon
+          );
+    
+          if (distance < zone.radius) {
+            return true;
+          }
+        }
+      }
+      return false;
+    
+}
