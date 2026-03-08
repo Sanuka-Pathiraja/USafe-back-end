@@ -16,6 +16,10 @@ function circleToPolygon(centerLon, centerLat, radiusMeters, numPoints = 32) {
         centerLon + dLon * 180 / Math.PI,
         centerLat + dLat * 180 / Math.PI
         ]);
+
+        coords.push(coords[0]);
+
+        return coords;
     
   }
 }
