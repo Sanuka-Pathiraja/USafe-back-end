@@ -31,3 +31,4 @@ function routeIntersectsZones(routeCoords, redZones) {
       return false;
     
 }
+module.exports = { calculateDistance, routeIntersectsZones };
