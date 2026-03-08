@@ -12,6 +12,10 @@ function circleToPolygon(centerLon, centerLat, radiusMeters, numPoints = 32) {
         const dLon = dx / (earthRadius * Math.cos(centerLat * Math.PI / 180));
         const dLat = dy / earthRadius;
     
+        coords.push([
+        centerLon + dLon * 180 / Math.PI,
+        centerLat + dLat * 180 / Math.PI
+        ]);
     
   }
 }
