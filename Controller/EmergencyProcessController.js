@@ -2,6 +2,7 @@ import AppDataSource from "../config/data-source.js";
 import { sendNotifySMS } from "../CallFeat/notifylksms.js";
 import makeOutboundCall from "../CallFeat/voiceService.js";
 import { hangupCall } from "../CallFeat/voiceCancel.js";
+import { normalizeNum } from "../utils/normalizeNumberFormat.js";
 
 // In-memory sessions (demo-ready)
 export const emergencySessions = new Map();
@@ -545,8 +546,14 @@ export const startCallToContact = async (req, res) => {
       return fail(res, 404, "CONTACT_NOT_FOUND", "contactIndex not found");
     }
 
-    const to = (session.contacts[idx - 1]?.phone || "").trim();
-    if (!to) return fail(res, 500, "MISSING_PHONE", "Missing phone for selected contact");
+    const rawTo = (session.contacts[idx - 1]?.phone || "").trim();
+    if (!rawTo) return fail(res, 500, "MISSING_PHONE", "Missing phone for selected contact");
+    let to;
+    try {
+      to = normalizeNum(rawTo);
+    } catch {
+      return fail(res, 400, "INVALID_PHONE_FORMAT", "Invalid phone format for selected contact");
+    }
 
     let callId;
     let demo = false;
@@ -636,14 +643,20 @@ export const attemptCallToContact = async (req, res) => {
     }
 
     const contact = session.contacts[idx - 1] || {};
-    const to = (session.contacts[idx - 1]?.phone || "").trim();
-    if (!to) return fail(res, 500, "MISSING_PHONE", "Missing phone for selected contact");
+    const rawTo = (session.contacts[idx - 1]?.phone || "").trim();
+    if (!rawTo) return fail(res, 500, "MISSING_PHONE", "Missing phone for selected contact");
+    let to;
+    try {
+      to = normalizeNum(rawTo);
+    } catch {
+      return fail(res, 400, "INVALID_PHONE_FORMAT", "Invalid phone format for selected contact");
+    }
     logEvent(req, "CALL_ATTEMPT_STARTED", {
       sessionId,
       userId,
       contactIndex: idx,
       contactName: contact.name || null,
-      contactPhone: maskPhone(to),
+      contactPhone: maskPhone(rawTo),
       timeoutSec,
     });
 

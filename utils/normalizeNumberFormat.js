@@ -4,11 +4,11 @@ export function normalizeNum(msisdnRaw) {
   // 07XXXXXXXX -> 94XXXXXXXXX
   if (digits.startsWith("0") && digits.length === 10) return "94" + digits.slice(1);
 
-  // 94XXXXXXXXX -> keep
+  // 94XXXXXXXXX or +94XXXXXXXXX -> keep as 94XXXXXXXXX
   if (digits.startsWith("94") && digits.length === 11) return digits;
 
   // 7XXXXXXXX -> 94XXXXXXXXX (sometimes people store without leading 0)
-  if (digits.length === 9) return "94" + digits;
+  if (digits.length === 9 && digits.startsWith("7")) return "94" + digits;
 
   throw new Error(`Invalid LK number format: ${msisdnRaw}`);
 }

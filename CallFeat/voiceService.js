@@ -24,7 +24,7 @@ export default async function makeOutboundCall(toOverride, opts = {}) {
   if (!process.env.VONAGE_FROM_NUMBER) throw new Error("❌ VONAGE_FROM_NUMBER is missing in .env");
 
   // In real mode, you need this:
-  const publicBaseUrl = (opts.publicBaseUrl || process.env.PUBLIC_BASE_URL || "").trim();
+  const publicBaseUrl = (opts.publicBaseUrl || process.env.PUBLIC_BASE_URL || process.env.WEBHOOK_BASE_URL || "").trim();
   const sessionId = opts.sessionId || "";
   const contactIndex = opts.contactIndex || "";
 
@@ -45,6 +45,17 @@ export default async function makeOutboundCall(toOverride, opts = {}) {
   }
 
   const response = await vonage.voice.createOutboundCall(payload);
+  console.log(
+    JSON.stringify({
+      event: "VOICE_OUTBOUND_REQUESTED",
+      ts: new Date().toISOString(),
+      to,
+      from: process.env.VONAGE_FROM_NUMBER,
+      hasEventUrl: Boolean(payload.event_url?.length),
+      providerCallId: response?.uuid || null,
+      providerStatus: response?.status || null,
+    })
+  );
   return response;
 }
 
