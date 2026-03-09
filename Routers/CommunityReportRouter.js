@@ -3,6 +3,7 @@ import {
   createCommunityReport,
   getMyCommunityReports,
   getCommunityReportDetails,
+  getLiveSafetyScore,
 } from "../Controller/CommunityReportController.js";
 import multer from "multer";
 // import { authMiddleware } from "../middleware/authMiddleware.js";
@@ -21,6 +22,8 @@ const upload = multer({ storage });
 // Use upload.array if multiple images
 communityReportRouter.post("/add", authMiddleware, upload.array("images_proofs"), createCommunityReport);
 communityReportRouter.get("/my-reports", authMiddleware, getMyCommunityReports);
+communityReportRouter.post("/live-safety-score", authMiddleware, getLiveSafetyScore);
+communityReportRouter.get("/live-safety-score", authMiddleware, getLiveSafetyScore);
 communityReportRouter.get("/:reportId", authMiddleware, getCommunityReportDetails);
 
 export default communityReportRouter;

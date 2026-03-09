@@ -2,6 +2,49 @@ import AppDataSource from "../config/data-source.js";
 import fs from "fs";
 import { supabase } from "../config/supabase.js";
 
+function parseCoordinateValue(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function extractCoordinates(locationRaw) {
+  if (typeof locationRaw !== "string") return null;
+  const text = locationRaw.trim();
+  if (!text) return null;
+
+  // Supports: "6.9,79.8" and map URLs like "...@6.9,79.8" or "...q=6.9,79.8"
+  const pairMatch = text.match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
+  if (!pairMatch) return null;
+
+  const lat = parseCoordinateValue(pairMatch[1]);
+  const lng = parseCoordinateValue(pairMatch[2]);
+  if (lat === null || lng === null) return null;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+
+  return { lat, lng };
+}
+
+function toRad(value) {
+  return (value * Math.PI) / 180;
+}
+
+function distanceKm(aLat, aLng, bLat, bLng) {
+  const earthRadiusKm = 6371;
+  const dLat = toRad(bLat - aLat);
+  const dLng = toRad(bLng - aLng);
+  const h =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  return 2 * earthRadiusKm * Math.asin(Math.sqrt(h));
+}
+
+function clampScore(value) {
+  if (!Number.isFinite(value)) return 0;
+  if (value < 0) return 0;
+  if (value > 100) return 100;
+  return Math.round(value);
+}
+
 export const createCommunityReport = async (req, res) => {
   try {
     const repo = AppDataSource.getRepository("CommunityReport");
@@ -123,5 +166,82 @@ export const getCommunityReportDetails = async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
+  }
+};
+
+export const getLiveSafetyScore = async (req, res) => {
+  console.log("📍 SAFETY SCORE REQUEST RECEIVED: ", req.body || req.query);
+
+  try {
+    const latInput = req.query?.lat ?? req.query?.latitude ?? req.body?.lat ?? req.body?.latitude;
+    const lngInput = req.query?.lng ?? req.query?.longitude ?? req.body?.lng ?? req.body?.longitude;
+
+    const lat = parseCoordinateValue(latInput);
+    const lng = parseCoordinateValue(lngInput);
+
+    if (lat === null || lng === null) {
+      return res.status(400).json({
+        success: false,
+        message: "lat/lng (or latitude/longitude) are required as numeric values",
+      });
+    }
+
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid coordinate range",
+      });
+    }
+
+    const repo = AppDataSource.getRepository("CommunityReport");
+    const reports = await repo.find({
+      select: {
+        reportId: true,
+        reportDate_time: true,
+        location: true,
+      },
+      take: 200,
+      order: { reportDate_time: "DESC" },
+    });
+
+    const radiusKm = 2;
+    let nearbyCount = 0;
+    let recentNearbyCount = 0;
+    const now = Date.now();
+    const recentWindowMs = 24 * 60 * 60 * 1000;
+
+    for (const report of reports) {
+      const point = extractCoordinates(report.location);
+      if (!point) continue;
+
+      const distance = distanceKm(lat, lng, point.lat, point.lng);
+      if (distance <= radiusKm) {
+        nearbyCount += 1;
+
+        const reportTs = new Date(report.reportDate_time).getTime();
+        if (Number.isFinite(reportTs) && now - reportTs <= recentWindowMs) {
+          recentNearbyCount += 1;
+        }
+      }
+    }
+
+    const nearbyPenalty = nearbyCount * 8;
+    const recentPenalty = recentNearbyCount * 12;
+    const finalScore = clampScore(100 - nearbyPenalty - recentPenalty);
+
+    console.log("✅ SAFETY SCORE CALCULATED: ", finalScore);
+
+    return res.status(200).json({
+      success: true,
+      finalScore,
+      factors: {
+        radiusKm,
+        nearbyCount,
+        recentNearbyCount,
+      },
+    });
+  } catch (error) {
+    console.error("❌ SAFETY SCORE ERROR: ", error.message);
+    return res.status(500).json({ success: false, message: "Failed to calculate live safety score" });
   }
 };

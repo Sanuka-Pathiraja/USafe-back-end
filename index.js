@@ -4,6 +4,7 @@ dotenv.config();
 
 import express from "express";
 import cors from "cors";
+import authMiddleware from "./middleware/authMiddleware.js";
 
 import AppDataSource from "./config/data-source.js";
 import { checkNotifyBalance } from "./CallFeat/notifylkStatus.js";
@@ -16,6 +17,7 @@ import Userrouter from "./Routers/UserRouter.js";
 import contactRouter from "./Routers/ContactRouter.js";
 import communityReportRouter from "./Routers/CommunityReportRouter.js";
 import emergencyRouter from "./Routers/EmergencyRouter.js";
+import { getLiveSafetyScore } from "./Controller/CommunityReportController.js";
 
 // Legacy unused emergency notify scenario (kept commented intentionally)
 // import notifyLkEmergencyRouter from "./Routers/NofityLkSmsRouter.js";
@@ -62,6 +64,10 @@ app.use("/", notifyLkBulkSmsRouter);
 app.use("/user", Userrouter);
 app.use("/contact", contactRouter);
 app.use("/report", communityReportRouter);
+
+// Compatibility alias for clients that call /safety-score directly.
+app.post("/safety-score", authMiddleware, getLiveSafetyScore);
+app.get("/safety-score", authMiddleware, getLiveSafetyScore);
 
 app.use("/", emergencyRouter);
 // app.use("/", notifyLkEmergencyRouter); // Legacy unused emergency scenario
