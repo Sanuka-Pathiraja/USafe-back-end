@@ -17,6 +17,7 @@ import Userrouter from "./Routers/UserRouter.js";
 import contactRouter from "./Routers/ContactRouter.js";
 import communityReportRouter from "./Routers/CommunityReportRouter.js";
 import emergencyRouter from "./Routers/EmergencyRouter.js";
+import tripRouter from "./Routers/TripRouter.js";
 import { getLiveSafetyScore } from "./Controller/CommunityReportController.js";
 
 // Legacy unused emergency notify scenario (kept commented intentionally)
@@ -64,6 +65,7 @@ app.use("/", notifyLkBulkSmsRouter);
 app.use("/user", Userrouter);
 app.use("/contact", contactRouter);
 app.use("/report", communityReportRouter);
+app.use("/api/trip", tripRouter);
 
 // Compatibility alias for clients that call /safety-score directly.
 app.post("/safety-score", authMiddleware, getLiveSafetyScore);

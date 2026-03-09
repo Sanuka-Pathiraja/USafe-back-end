@@ -45,6 +45,350 @@ function clampScore(value) {
   return Math.round(value);
 }
 
+function deriveSafetyStatus(score) {
+  if (score >= 80) return "Safe";
+  if (score >= 60) return "Caution";
+  if (score >= 40) return "Risky";
+  return "Danger";
+}
+
+function deriveTimeOfDayLabel(date = new Date()) {
+  const hour = date.getHours();
+  if (hour >= 5 && hour < 12) return "Morning";
+  if (hour >= 12 && hour < 17) return "Afternoon";
+  if (hour >= 17 && hour < 21) return "Evening";
+  return "Night";
+}
+
+function getTimePenalty(timeOfDay) {
+  if (timeOfDay === "Night") return 12;
+  if (timeOfDay === "Evening") return 6;
+  return 0;
+}
+
+function toBatteryPercent(rawBatteryLevel) {
+  if (rawBatteryLevel === undefined || rawBatteryLevel === null || String(rawBatteryLevel).trim() === "") return null;
+  const value = Number(rawBatteryLevel);
+  if (!Number.isFinite(value)) return null;
+  if (value <= 1) return clampScore(value * 100);
+  return clampScore(value);
+}
+
+function getBatteryPenalty(batteryPercent) {
+  if (batteryPercent === null) return 0;
+  if (batteryPercent < 10) return 15;
+  if (batteryPercent < 20) return 10;
+  if (batteryPercent < 35) return 5;
+  return 0;
+}
+
+function getDistancePenalty(distanceKm) {
+  if (distanceKm === null || !Number.isFinite(distanceKm)) return 6;
+  if (distanceKm > 5) return 8;
+  if (distanceKm > 3) return 5;
+  if (distanceKm > 1.5) return 2;
+  return 0;
+}
+
+function buildDummyDestination(lat, lng, distanceKm = 1) {
+  // Move east by ~distanceKm to generate a stable nearby destination.
+  const dLng = distanceKm / (111.32 * Math.cos((lat * Math.PI) / 180));
+  return {
+    lat,
+    lng: lng + dLng,
+  };
+}
+
+function getTrafficPenalty(trafficRatio) {
+  if (!Number.isFinite(trafficRatio) || trafficRatio <= 0) return 5;
+  if (trafficRatio >= 2) return 0;
+  if (trafficRatio >= 1.5) return 2;
+  if (trafficRatio >= 1.2) return 4;
+  return 7;
+}
+
+function getDensityPenalty(openNowCount) {
+  if (!Number.isFinite(openNowCount) || openNowCount < 0) return 8;
+  if (openNowCount >= 20) return 0;
+  if (openNowCount >= 10) return 3;
+  if (openNowCount >= 5) return 6;
+  if (openNowCount >= 1) return 10;
+  return 15;
+}
+
+function normalizeSignalStatus(rawSignal) {
+  if (rawSignal === undefined || rawSignal === null) return null;
+  const text = String(rawSignal).trim().toLowerCase();
+  return text || null;
+}
+
+function getSignalPenalty(signalStatus) {
+  if (!signalStatus) return 0;
+  if (["none", "offline", "no-signal", "no_signal", "disconnected"].includes(signalStatus)) return 18;
+  if (["weak", "poor", "2g", "edge"].includes(signalStatus)) return 12;
+  if (["moderate", "3g", "fair"].includes(signalStatus)) return 6;
+  if (["strong", "excellent", "4g", "5g", "wifi"].includes(signalStatus)) return 0;
+  return 4;
+}
+
+function getWeatherPenalty(weatherCode) {
+  if (!Number.isFinite(weatherCode)) return 5;
+  if (weatherCode >= 200 && weatherCode < 300) return 10; // thunderstorm
+  if (weatherCode >= 300 && weatherCode < 400) return 6; // drizzle
+  if (weatherCode >= 500 && weatherCode < 600) return 7; // rain
+  if (weatherCode >= 600 && weatherCode < 700) return 8; // snow
+  if (weatherCode >= 700 && weatherCode < 800) return 10; // fog/haze/smoke
+  if (weatherCode === 800) return 0; // clear
+  if (weatherCode > 800 && weatherCode < 900) return 3; // clouds
+  return 4;
+}
+
+function getCrimePenalty(violentCount) {
+  if (!Number.isFinite(violentCount) || violentCount < 0) return 8;
+  if (violentCount >= 10) return 20;
+  if (violentCount >= 6) return 15;
+  if (violentCount >= 3) return 10;
+  if (violentCount >= 1) return 5;
+  return 0;
+}
+
+function countViolentIncidents(incidents) {
+  if (!Array.isArray(incidents)) return 0;
+  const violentKeywords = ["assault", "homicide", "murder", "robbery", "rape", "kidnap", "weapon", "shoot", "stabbing", "violence"];
+  return incidents.filter((item) => {
+    const text = String(item?.type || item?.category || item?.title || item?.offense || "").toLowerCase();
+    return violentKeywords.some((k) => text.includes(k));
+  }).length;
+}
+
+async function fetchTrafficData({ lat, lng, apiKey }) {
+  try {
+    const destination = buildDummyDestination(lat, lng, 1);
+    const url = new URL("https://maps.googleapis.com/maps/api/directions/json");
+    url.searchParams.set("origin", `${lat},${lng}`);
+    url.searchParams.set("destination", `${destination.lat},${destination.lng}`);
+    url.searchParams.set("departure_time", "now");
+    url.searchParams.set("mode", "driving");
+    url.searchParams.set("key", apiKey);
+
+    const response = await fetch(url, { method: "GET" });
+    if (!response.ok) {
+      return { status: `HTTP_${response.status}`, ratio: null, normalDurationSec: null, trafficDurationSec: null, message: "HTTP request failed" };
+    }
+
+    const data = await response.json();
+    if (!data || data.status !== "OK") {
+      return {
+        status: data?.status || "REQUEST_FAILED",
+        ratio: null,
+        normalDurationSec: null,
+        trafficDurationSec: null,
+        message: data?.error_message || null,
+      };
+    }
+
+    const leg = data?.routes?.[0]?.legs?.[0];
+    const normalDurationSec = Number(leg?.duration?.value);
+    const trafficDurationSec = Number(leg?.duration_in_traffic?.value);
+
+    if (!Number.isFinite(normalDurationSec) || !Number.isFinite(trafficDurationSec) || normalDurationSec <= 0) {
+      return { status: "MISSING_DURATION", ratio: null, normalDurationSec: null, trafficDurationSec: null, message: null };
+    }
+
+    return {
+      status: "OK",
+      ratio: trafficDurationSec / normalDurationSec,
+      normalDurationSec,
+      trafficDurationSec,
+      message: null,
+    };
+  } catch (error) {
+    return { status: "REQUEST_FAILED", ratio: null, normalDurationSec: null, trafficDurationSec: null, message: error?.message || String(error) };
+  }
+}
+
+async function fetchPopulationDensity({ lat, lng, apiKey }) {
+  try {
+    const url = new URL("https://maps.googleapis.com/maps/api/place/nearbysearch/json");
+    url.searchParams.set("location", `${lat},${lng}`);
+    url.searchParams.set("radius", "500");
+    url.searchParams.set("opennow", "true");
+    url.searchParams.set("key", apiKey);
+
+    const response = await fetch(url, { method: "GET" });
+    if (!response.ok) {
+      return { status: `HTTP_${response.status}`, openNowCount: null, message: "HTTP request failed" };
+    }
+
+    const data = await response.json();
+    if (!data || (data.status && !["OK", "ZERO_RESULTS"].includes(data.status))) {
+      return {
+        status: data?.status || "REQUEST_FAILED",
+        openNowCount: null,
+        message: data?.error_message || null,
+      };
+    }
+
+    const count = Array.isArray(data.results) ? data.results.length : 0;
+    return {
+      status: data.status || "OK",
+      openNowCount: count,
+      message: null,
+    };
+  } catch (error) {
+    return { status: "REQUEST_FAILED", openNowCount: null, message: error?.message || String(error) };
+  }
+}
+
+async function fetchWeatherData({ lat, lng, apiKey }) {
+  try {
+    const url = new URL("https://api.openweathermap.org/data/2.5/weather");
+    url.searchParams.set("lat", String(lat));
+    url.searchParams.set("lon", String(lng));
+    url.searchParams.set("appid", apiKey);
+
+    const response = await fetch(url, { method: "GET" });
+    if (!response.ok) {
+      return { status: `HTTP_${response.status}`, weatherCode: null, description: null, message: "HTTP request failed" };
+    }
+
+    const data = await response.json();
+    const weatherCode = Number(data?.weather?.[0]?.id);
+    const description = data?.weather?.[0]?.description || null;
+    if (!Number.isFinite(weatherCode)) {
+      return { status: "MISSING_WEATHER_CODE", weatherCode: null, description: null, message: null };
+    }
+
+    return {
+      status: "OK",
+      weatherCode,
+      description,
+      message: null,
+    };
+  } catch (error) {
+    return { status: "REQUEST_FAILED", weatherCode: null, description: null, message: error?.message || String(error) };
+  }
+}
+
+async function fetchCrimeData({ lat, lng, apiKey }) {
+  try {
+    // API Ninjas reverse geocoding + crime flow.
+    const reverseUrl = new URL("https://api.api-ninjas.com/v1/reversegeocoding");
+    reverseUrl.searchParams.set("lat", String(lat));
+    reverseUrl.searchParams.set("lon", String(lng));
+
+    const reverseRes = await fetch(reverseUrl, {
+      method: "GET",
+      headers: { "X-Api-Key": apiKey },
+    });
+
+    if (!reverseRes.ok) {
+      return { status: `HTTP_${reverseRes.status}`, city: null, region: null, violentCount: null, totalIncidents: null, message: "Reverse geocoding failed" };
+    }
+
+    const reverseData = await reverseRes.json();
+    const loc = Array.isArray(reverseData) ? reverseData[0] : null;
+    const city = loc?.city || null;
+    const region = loc?.state || null;
+
+    if (!city) {
+      return { status: "CITY_NOT_FOUND", city: null, region: null, violentCount: null, totalIncidents: null, message: null };
+    }
+
+    const crimeUrl = new URL("https://api.api-ninjas.com/v1/crime");
+    crimeUrl.searchParams.set("city", city);
+    if (region) crimeUrl.searchParams.set("state", region);
+
+    const crimeRes = await fetch(crimeUrl, {
+      method: "GET",
+      headers: { "X-Api-Key": apiKey },
+    });
+
+    if (!crimeRes.ok) {
+      return { status: `HTTP_${crimeRes.status}`, city, region, violentCount: null, totalIncidents: null, message: "Crime API request failed" };
+    }
+
+    const crimeData = await crimeRes.json();
+    const incidents = Array.isArray(crimeData) ? crimeData : [];
+    const violentCount = countViolentIncidents(incidents);
+
+    return {
+      status: "OK",
+      city,
+      region,
+      violentCount,
+      totalIncidents: incidents.length,
+      message: null,
+    };
+  } catch (error) {
+    return {
+      status: "REQUEST_FAILED",
+      city: null,
+      region: null,
+      violentCount: null,
+      totalIncidents: null,
+      message: error?.message || String(error),
+    };
+  }
+}
+
+async function fetchNearestPlace({ lat, lng, type, apiKey }) {
+  try {
+    const url = new URL("https://maps.googleapis.com/maps/api/place/nearbysearch/json");
+    url.searchParams.set("location", `${lat},${lng}`);
+    url.searchParams.set("rankby", "distance");
+    url.searchParams.set("type", type);
+    url.searchParams.set("key", apiKey);
+
+    const response = await fetch(url, { method: "GET" });
+    if (!response.ok) {
+      return { name: "Data unavailable", distanceKm: null, providerStatus: `HTTP_${response.status}`, providerMessage: "HTTP request failed" };
+    }
+
+    const data = await response.json();
+    if (!data || data.status === "ZERO_RESULTS") {
+      return {
+        name: "Data unavailable",
+        distanceKm: null,
+        providerStatus: "ZERO_RESULTS",
+        providerMessage: data?.error_message || null,
+      };
+    }
+
+    if (data.status && data.status !== "OK") {
+      return {
+        name: "Data unavailable",
+        distanceKm: null,
+        providerStatus: data.status,
+        providerMessage: data.error_message || null,
+      };
+    }
+
+    const first = Array.isArray(data.results) ? data.results[0] : null;
+    const placeLat = first?.geometry?.location?.lat;
+    const placeLng = first?.geometry?.location?.lng;
+
+    if (!first || !Number.isFinite(placeLat) || !Number.isFinite(placeLng)) {
+      return { name: "Data unavailable", distanceKm: null, providerStatus: "MISSING_GEOMETRY", providerMessage: null };
+    }
+
+    const km = distanceKm(lat, lng, placeLat, placeLng);
+    return {
+      name: first.name || "Unknown",
+      distanceKm: Math.round(km * 100) / 100,
+      providerStatus: "OK",
+      providerMessage: null,
+    };
+  } catch (error) {
+    return {
+      name: "Data unavailable",
+      distanceKm: null,
+      providerStatus: "REQUEST_FAILED",
+      providerMessage: error?.message || String(error),
+    };
+  }
+}
+
 export const createCommunityReport = async (req, res) => {
   try {
     const repo = AppDataSource.getRepository("CommunityReport");
@@ -227,17 +571,181 @@ export const getLiveSafetyScore = async (req, res) => {
 
     const nearbyPenalty = nearbyCount * 8;
     const recentPenalty = recentNearbyCount * 12;
-    const finalScore = clampScore(100 - nearbyPenalty - recentPenalty);
+
+    const timeOfDay = deriveTimeOfDayLabel(new Date());
+    const timePenalty = getTimePenalty(timeOfDay);
+
+    const batteryLevelRaw = req.body?.batteryLevel ?? req.body?.battery_level ?? req.query?.batteryLevel ?? req.query?.battery_level;
+    const batteryLevel = toBatteryPercent(batteryLevelRaw);
+    const batteryPenalty = getBatteryPenalty(batteryLevel);
+
+    const signalStatusRaw = req.body?.signalStatus ?? req.body?.signal_status ?? req.query?.signalStatus ?? req.query?.signal_status;
+    const signalStatus = normalizeSignalStatus(signalStatusRaw);
+    const signalPenalty = getSignalPenalty(signalStatus);
+
+    const placesApiKey = process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_MAPS_API_KEY || null;
+    const openWeatherApiKey = process.env.OPENWEATHER_API_KEY || null;
+    const crimeApiKey = process.env.CRIME_API_KEY || process.env.API_NINJAS_API_KEY || null;
+
+    const mapsApiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_PLACES_API_KEY || null;
+
+    let nearestPoliceStation = { name: "Data unavailable", distanceKm: null, providerStatus: "API_KEY_MISSING" };
+    let nearestHospital = { name: "Data unavailable", distanceKm: null, providerStatus: "API_KEY_MISSING" };
+
+    let trafficData = {
+      status: "API_KEY_MISSING",
+      ratio: null,
+      normalDurationSec: null,
+      trafficDurationSec: null,
+      message: null,
+    };
+
+    let densityData = {
+      status: "API_KEY_MISSING",
+      openNowCount: null,
+      message: null,
+    };
+
+    let weatherData = {
+      status: "API_KEY_MISSING",
+      weatherCode: null,
+      description: null,
+      message: null,
+    };
+
+    let crimeData = {
+      status: "API_KEY_MISSING",
+      city: null,
+      region: null,
+      violentCount: null,
+      totalIncidents: null,
+      message: null,
+    };
+
+    if (placesApiKey) {
+      const [police, hospital] = await Promise.all([
+        fetchNearestPlace({ lat, lng, type: "police", apiKey: placesApiKey }),
+        fetchNearestPlace({ lat, lng, type: "hospital", apiKey: placesApiKey }),
+      ]);
+      nearestPoliceStation = police;
+      nearestHospital = hospital;
+
+      densityData = await fetchPopulationDensity({ lat, lng, apiKey: placesApiKey });
+    }
+
+    if (mapsApiKey) {
+      trafficData = await fetchTrafficData({ lat, lng, apiKey: mapsApiKey });
+    }
+
+    if (openWeatherApiKey) {
+      weatherData = await fetchWeatherData({ lat, lng, apiKey: openWeatherApiKey });
+    }
+
+    if (crimeApiKey) {
+      crimeData = await fetchCrimeData({ lat, lng, apiKey: crimeApiKey });
+    }
+
+    const policePenalty = getDistancePenalty(nearestPoliceStation.distanceKm);
+    const hospitalPenalty = getDistancePenalty(nearestHospital.distanceKm);
+    const servicesPenalty = policePenalty + hospitalPenalty;
+
+    const trafficPenalty = getTrafficPenalty(trafficData.ratio);
+    const densityPenalty = getDensityPenalty(densityData.openNowCount);
+    const weatherPenalty = getWeatherPenalty(weatherData.weatherCode);
+    const crimePenalty = getCrimePenalty(crimeData.violentCount);
+
+    const finalScore = clampScore(
+      100 - nearbyPenalty - recentPenalty - timePenalty - batteryPenalty - servicesPenalty - trafficPenalty - densityPenalty - signalPenalty - weatherPenalty - crimePenalty
+    );
+    const status = deriveSafetyStatus(finalScore);
 
     console.log("✅ SAFETY SCORE CALCULATED: ", finalScore);
 
     return res.status(200).json({
       success: true,
+      ok: true,
+      message: "Live safety score calculated",
       finalScore,
+      safetyScore: finalScore,
+      safety_score: finalScore,
+      score: finalScore,
+      liveSafetyScore: finalScore,
+      live_safety_score: finalScore,
+      status,
+      timeOfDay,
+      time_of_day: timeOfDay,
+      batteryLevel,
+      battery_level: batteryLevel,
+      nearestPoliceStation,
+      nearest_police_station: nearestPoliceStation,
+      nearestHospital,
+      nearest_hospital: nearestHospital,
+      traffic: {
+        ratio: trafficData.ratio,
+        normalDurationSec: trafficData.normalDurationSec,
+        trafficDurationSec: trafficData.trafficDurationSec,
+        providerStatus: trafficData.status,
+        providerMessage: trafficData.message,
+      },
+      populationDensity: {
+        openNowCount: densityData.openNowCount,
+        providerStatus: densityData.status,
+        providerMessage: densityData.message,
+      },
+      signal: {
+        status: signalStatus,
+      },
+      weather: {
+        weatherCode: weatherData.weatherCode,
+        description: weatherData.description,
+        providerStatus: weatherData.status,
+        providerMessage: weatherData.message,
+      },
+      crime: {
+        city: crimeData.city,
+        region: crimeData.region,
+        violentCount: crimeData.violentCount,
+        totalIncidents: crimeData.totalIncidents,
+        providerStatus: crimeData.status,
+        providerMessage: crimeData.message,
+      },
       factors: {
         radiusKm,
         nearbyCount,
         recentNearbyCount,
+        penalties: {
+          nearbyPenalty,
+          recentPenalty,
+          timePenalty,
+          batteryPenalty,
+          servicesPenalty,
+          policePenalty,
+          hospitalPenalty,
+          trafficPenalty,
+          densityPenalty,
+          signalPenalty,
+          weatherPenalty,
+          crimePenalty,
+        },
+        providers: {
+          placesProvider: placesApiKey ? "google-places" : "not-configured",
+          trafficProvider: mapsApiKey ? "google-directions" : "not-configured",
+          weatherProvider: openWeatherApiKey ? "openweather" : "not-configured",
+          crimeProvider: crimeApiKey ? "api-ninjas" : "not-configured",
+        },
+      },
+      data: {
+        finalScore,
+        safetyScore: finalScore,
+        safety_score: finalScore,
+        score: finalScore,
+        status,
+      },
+      result: {
+        finalScore,
+        score: finalScore,
+        safetyScore: finalScore,
+        safety_score: finalScore,
       },
     });
   } catch (error) {
