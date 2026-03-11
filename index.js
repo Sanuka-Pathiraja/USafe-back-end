@@ -17,6 +17,7 @@ import Userrouter from "./Routers/UserRouter.js";
 import contactRouter from "./Routers/ContactRouter.js";
 import communityReportRouter from "./Routers/CommunityReportRouter.js";
 import emergencyRouter from "./Routers/EmergencyRouter.js";
+import silentCallRouter from "./Routers/SilentCallRouter.js";
 import tripRouter from "./Routers/TripRouter.js";
 import { getLiveSafetyScore } from "./Controller/CommunityReportController.js";
 
@@ -72,6 +73,7 @@ app.post("/safety-score", authMiddleware, getLiveSafetyScore);
 app.get("/safety-score", authMiddleware, getLiveSafetyScore);
 
 app.use("/", emergencyRouter);
+app.use("/", silentCallRouter);
 // app.use("/", notifyLkEmergencyRouter); // Legacy unused emergency scenario
 
 app.use("/payment", stripeRouter);

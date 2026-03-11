@@ -18,7 +18,7 @@ const vonage = new Vonage({
 
 export default async function makeOutboundCall(toOverride, opts = {}) {
   const to = (toOverride || "").trim();
-  const text = process.env.SOS_CALL_TEXT || "Emergency alert from USafe.";
+  const text = String(opts.text || process.env.SOS_CALL_TEXT || "Emergency alert from USafe.").trim();
 
   if (!to) throw new Error("❌ Missing call target number.");
   if (!process.env.VONAGE_FROM_NUMBER) throw new Error("❌ VONAGE_FROM_NUMBER is missing in .env");
