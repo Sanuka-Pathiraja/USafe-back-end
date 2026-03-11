@@ -1,6 +1,6 @@
 import { normalizeNum } from "../utils/normalizeNumberFormat.js";
 
-const NOTIFY_URL = "https://app.notify.lk/api/v1/send";
+const DEFAULT_NOTIFY_BASE_URL = "https://app.notify.lk/api/v1";
 
 export async function sendNotifySMS({
   to,
@@ -20,13 +20,14 @@ export async function sendNotifySMS({
     throw new Error("SMS is disabled");
   }
 
-  const user_id = process.env.NOTIFY_USER_ID;
-  const api_key = process.env.NOTIFY_API_KEY;
-  const sender_id = process.env.NOTIFY_SENDER_ID;
+  const user_id = process.env.NOTIFYLK_USER_ID || process.env.NOTIFY_USER_ID;
+  const api_key = process.env.NOTIFYLK_API_KEY || process.env.NOTIFY_API_KEY;
+  const sender_id = process.env.NOTIFYLK_SENDER_ID || process.env.NOTIFY_SENDER_ID;
+  const baseUrl = (process.env.NOTIFYLK_BASE_URL || DEFAULT_NOTIFY_BASE_URL).replace(/\/+$/, "");
 
   if (!user_id || !api_key || !sender_id) {
     throw new Error(
-      "Missing Notify.lk env vars (NOTIFY_USER_ID / NOTIFY_API_KEY / NOTIFY_SENDER_ID)"
+      "Missing Notify.lk env vars (NOTIFYLK_USER_ID / NOTIFYLK_API_KEY / NOTIFYLK_SENDER_ID)"
     );
   }
 
@@ -50,7 +51,7 @@ export async function sendNotifySMS({
       : {}),
   });
 
-  const res = await fetch(NOTIFY_URL, {
+  const res = await fetch(`${baseUrl}/send`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: payload,
