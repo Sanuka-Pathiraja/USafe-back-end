@@ -513,6 +513,34 @@ export const getCommunityReportDetails = async (req, res) => {
   }
 };
 
+export const deleteCommunityReport = async (req, res) => {
+  try {
+    const repo = AppDataSource.getRepository("CommunityReport");
+    const userId = req.user.id;
+    const reportId = Number(req.params.reportId);
+
+    if (!Number.isInteger(reportId) || reportId <= 0) {
+      return res.status(400).json({ success: false, message: "Invalid reportId" });
+    }
+
+    const report = await repo.findOne({
+      where: { reportId, user: { id: userId } },
+      relations: { user: true },
+    });
+
+    if (!report) {
+      return res.status(404).json({ success: false, message: "Report not found" });
+    }
+
+    await repo.remove(report);
+
+    return res.status(200).json({ success: true, message: "Report deleted" });
+  } catch (err) {
+    console.error("Report delete failed", err);
+    return res.status(500).json({ success: false, message: "Failed to delete report" });
+  }
+};
+
 export const getLiveSafetyScore = async (req, res) => {
   console.log("📍 SAFETY SCORE REQUEST RECEIVED: ", req.body || req.query);
 

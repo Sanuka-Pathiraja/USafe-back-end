@@ -4,6 +4,7 @@ import {
   getMyCommunityReports,
   getCommunityReportDetails,
   getLiveSafetyScore,
+  deleteCommunityReport,
 } from "../Controller/CommunityReportController.js";
 import multer from "multer";
 // import { authMiddleware } from "../middleware/authMiddleware.js";
@@ -25,5 +26,6 @@ communityReportRouter.get("/my-reports", authMiddleware, getMyCommunityReports);
 communityReportRouter.post("/live-safety-score", authMiddleware, getLiveSafetyScore);
 communityReportRouter.get("/live-safety-score", authMiddleware, getLiveSafetyScore);
 communityReportRouter.get("/:reportId", authMiddleware, getCommunityReportDetails);
+communityReportRouter.delete("/:reportId", authMiddleware, deleteCommunityReport);
 
 export default communityReportRouter;
