@@ -1,10 +1,11 @@
-require('dotenv').config();
+import dotenv from "dotenv";
+dotenv.config();
 
-const express = require("express");
-const bodyParser = require("body-parser");
-const cors = require("cors");
+import express from "express";
+import bodyParser from "body-parser";
+import cors from "cors";
 
-const safeRouteRouter = require("./Router/safeRouteRouter");
+import safeRouteRouter from "./Routers/safeRouteRouter.js";
 
 const app = express();
 const PORT = 3000;
@@ -15,5 +16,5 @@ app.use(bodyParser.json());
 app.use("/", safeRouteRouter);
 
 app.listen(PORT, () => {
-  console.log(`🚀 USafe backend running on port ${PORT}`);
+  console.log(`🚀 Safe backend running on port ${PORT}`);
 });

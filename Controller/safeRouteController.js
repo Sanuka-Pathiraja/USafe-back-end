@@ -1,7 +1,7 @@
-const axios = require("axios");
-
-const circleToPolygon = require("../utils/circlePolygon");
-const routeIntersectsZones = require("../utils/zoneChecker");
+import "dotenv/config";
+import axios from "axios";
+import{circlePolygon} from "../utils/circlePolygon.js";
+import { routeIntersectsZones } from "../utils/zoneChecker.js";
 
 const getSafeRoute = async (req, res) => {
   try {
@@ -86,7 +86,7 @@ const getSafeRoute = async (req, res) => {
       redZones: redZones.map(zone => ({
         center: { lat: zone.lat, lon: zone.lon },
         radius: zone.radius,
-        polygon: circleToPolygon(zone.lon, zone.lat, zone.radius, 32)
+        polygon: circlePolygon(zone.lon, zone.lat, zone.radius, 32)
           .map(coord => ({ lat: coord[1], lon: coord[0] }))
       })),
       originalRoute: {
@@ -137,4 +137,4 @@ const getSafeRoute = async (req, res) => {
   }
 };
 
-module.exports = { getSafeRoute };
+export { getSafeRoute };

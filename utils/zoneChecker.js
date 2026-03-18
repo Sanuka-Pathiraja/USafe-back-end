@@ -1,4 +1,4 @@
-const calculateDistance = require("./distance");
+import { calculateDistance } from "./distance.js";
 
 function routeIntersectsZones(routeCoords, redZones) {
 
@@ -21,4 +21,4 @@ function routeIntersectsZones(routeCoords, redZones) {
   return false;
 }
 
-module.exports = routeIntersectsZones;
+export { routeIntersectsZones };

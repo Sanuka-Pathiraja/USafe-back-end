@@ -1,12 +1,14 @@
 {
   "name": "safezone",
   "version": "1.0.0",
+  "type": "module",
   "description": "",
   "main": "index.js",
   "directories": {
     "doc": "docs"
   },
   "scripts": {
+    "start": "node server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -16,12 +18,15 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
   "bugs": {
     "url": "https://github.com/Sanuka-Pathiraja/USafe-back-end/issues"
   },
   "homepage": "https://github.com/Sanuka-Pathiraja/USafe-back-end#readme",
   "dependencies": {
+    "@turf/circle": "^7.3.4",
+    "axios": "^1.6.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.1.4",
     "express": "^5.2.1"
   }
 }

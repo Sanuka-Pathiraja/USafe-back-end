@@ -1,8 +1,8 @@
-const express = require("express");
+import express from "express";
 const router = express.Router();
 
-const { getSafeRoute } = require("../Controller/safeRouteController");
+import { getSafeRoute } from "../Controller/safeRouteController.js";
 
 router.get("/safe-route", getSafeRoute);
 
-module.exports = router;
+export default router;
