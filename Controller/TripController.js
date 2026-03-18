@@ -12,6 +12,10 @@ const TRIP_EXPIRY_SWEEP_MS = Number.isFinite(RAW_TRIP_EXPIRY_SWEEP_MS)
   ? Math.min(Math.max(RAW_TRIP_EXPIRY_SWEEP_MS, 5000), 60000)
   : 15000;
 
+const MAX_TRIP_NAME_LENGTH = 120;
+const MAX_TRIP_CONTACTS = 20;
+const MAX_TRIP_DURATION_MINUTES = 24 * 60;
+
 function parsePositiveInt(value) {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0) return null;
@@ -307,13 +311,31 @@ export async function startTrip(req, res) {
     if (!cleanTripName) {
       return res.status(400).json({ success: false, message: "tripName is required" });
     }
+    if (cleanTripName.length > MAX_TRIP_NAME_LENGTH) {
+      return res.status(400).json({
+        success: false,
+        message: `tripName must be at most ${MAX_TRIP_NAME_LENGTH} characters`,
+      });
+    }
 
     if (!safeDurationMinutes) {
       return res.status(400).json({ success: false, message: "durationMinutes must be a positive integer" });
     }
+    if (safeDurationMinutes > MAX_TRIP_DURATION_MINUTES) {
+      return res.status(400).json({
+        success: false,
+        message: `durationMinutes must be <= ${MAX_TRIP_DURATION_MINUTES}`,
+      });
+    }
 
     if (safeContactIds.length === 0) {
       return res.status(400).json({ success: false, message: "contactIds must contain at least one valid contact ID" });
+    }
+    if (safeContactIds.length > MAX_TRIP_CONTACTS) {
+      return res.status(400).json({
+        success: false,
+        message: `contactIds must contain at most ${MAX_TRIP_CONTACTS} contacts`,
+      });
     }
 
     const tripRepo = AppDataSource.getRepository("TripSession");
