@@ -1,6 +1,19 @@
 import AppDataSource from "../config/data-source.js";
 
-const GUARDIAN_ROUTES_TABLE = process.env.GUARDIAN_ROUTES_TABLE || "guardian_routes_app";
+const DEFAULT_GUARDIAN_ROUTES_TABLE = "guardian_routes_app";
+
+function resolveSafeTableName(value, fallback) {
+  const candidate = String(value || "").trim();
+  if (/^[a-z_][a-z0-9_]*$/i.test(candidate)) {
+    return candidate;
+  }
+  return fallback;
+}
+
+const GUARDIAN_ROUTES_TABLE = resolveSafeTableName(
+  process.env.GUARDIAN_ROUTES_TABLE,
+  DEFAULT_GUARDIAN_ROUTES_TABLE
+);
 
 function validateCheckpoints(checkpoints) {
   if (!Array.isArray(checkpoints) || checkpoints.length === 0) {

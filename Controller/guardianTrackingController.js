@@ -2,9 +2,25 @@ import AppDataSource from "../config/data-source.js";
 import { sendSingleSMS } from "../CallFeat/quicksend.js";
 import { notifyUser } from "../utils/wsHub.js";
 
-const GUARDIAN_ROUTES_TABLE = process.env.GUARDIAN_ROUTES_TABLE || "guardian_routes_app";
-const GUARDIAN_PROGRESS_TABLE =
-  process.env.GUARDIAN_ROUTE_PROGRESS_TABLE || "guardian_route_progress";
+const DEFAULT_GUARDIAN_ROUTES_TABLE = "guardian_routes_app";
+const DEFAULT_GUARDIAN_PROGRESS_TABLE = "guardian_route_progress";
+
+function resolveSafeTableName(value, fallback) {
+  const candidate = String(value || "").trim();
+  if (/^[a-z_][a-z0-9_]*$/i.test(candidate)) {
+    return candidate;
+  }
+  return fallback;
+}
+
+const GUARDIAN_ROUTES_TABLE = resolveSafeTableName(
+  process.env.GUARDIAN_ROUTES_TABLE,
+  DEFAULT_GUARDIAN_ROUTES_TABLE
+);
+const GUARDIAN_PROGRESS_TABLE = resolveSafeTableName(
+  process.env.GUARDIAN_ROUTE_PROGRESS_TABLE,
+  DEFAULT_GUARDIAN_PROGRESS_TABLE
+);
 const DEFAULT_RADIUS_METERS = Number(process.env.GUARDIAN_CHECKPOINT_RADIUS_METERS || 50);
 
 function toNumber(value) {
