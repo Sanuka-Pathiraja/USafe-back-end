@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { getSafetyScore } from "../Controller/guardianController.js";
+import { getPublicTripTracking } from "../Controller/TripController.js";
 import { createGuardianRoute, listGuardianRoutes } from "../Controller/guardianRoutesController.js";
 import { sendCheckpointAlert } from "../Controller/guardianAlertController.js";
 import { trackGuardianProgress } from "../Controller/guardianTrackingController.js";
@@ -15,6 +16,8 @@ router.use((req, res, next) => {
 
 // Safety score is public (read-only calculation, rate-limited)
 router.get("/safety-score", getSafetyScore);
+// Public tracking endpoint for contact-shared SafePath links.
+router.get("/tracking/:trackingId", getPublicTripTracking);
 
 // Protected endpoints require authentication
 router.post("/alert", authMiddleware, sendCheckpointAlert);

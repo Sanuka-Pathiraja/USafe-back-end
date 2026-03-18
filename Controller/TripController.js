@@ -28,6 +28,14 @@ function resolveTripId(req) {
   return String(req.params?.tripId || req.body?.tripId || "").trim();
 }
 
+function resolveTrackingId(req) {
+  return String(req.params?.trackingId || req.query?.trackingId || "").trim();
+}
+
+function isValidTrackingId(trackingId) {
+  return /^[A-Za-z0-9_-]{6,64}$/.test(trackingId);
+}
+
 function buildTrackingUrl(trackingId) {
   const baseUrl =
     process.env.TRIP_TRACKING_BASE_URL ||
@@ -395,5 +403,46 @@ export async function triggerSOS(req, res) {
 
     console.error("TRIGGER_SOS_ERROR", error);
     return res.status(500).json({ success: false, message: "Failed to trigger SOS" });
+  }
+}
+
+// Public endpoint used by the shared tracking link shown to emergency contacts.
+export async function getPublicTripTracking(req, res) {
+  try {
+    const trackingId = resolveTrackingId(req);
+
+    if (!trackingId || !isValidTrackingId(trackingId)) {
+      return res.status(400).json({ success: false, message: "Invalid trackingId" });
+    }
+
+    const tripRepo = AppDataSource.getRepository("TripSession");
+    const trip = await tripRepo.findOneBy({ trackingId });
+
+    if (!trip) {
+      return res.status(404).json({ success: false, message: "Trip tracking session not found" });
+    }
+
+    // Public tracking should always be fresh and never cached by intermediaries.
+    res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.set("Pragma", "no-cache");
+    res.set("Expires", "0");
+
+    return res.status(200).json({
+      success: true,
+      message: "Trip tracking data fetched",
+      data: {
+        trackingId: trip.trackingId,
+        tripName: trip.tripName,
+        status: trip.status,
+        isTrackingActive: trip.status === TRIP_SESSION_STATUS.ACTIVE,
+        expectedEndTime: trip.expectedEndTime,
+        lastKnownLat: trip.lastKnownLat,
+        lastKnownLng: trip.lastKnownLng,
+        updatedAt: trip.updatedAt,
+      },
+    });
+  } catch (error) {
+    console.error("GET_PUBLIC_TRIP_TRACKING_ERROR", error);
+    return res.status(500).json({ success: false, message: "Failed to fetch trip tracking data" });
   }
 }
