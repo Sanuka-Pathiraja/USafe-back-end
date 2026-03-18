@@ -39,6 +39,7 @@ Optional but recommended:
 - Ensure no secrets are committed (`.env`, private key files, tokens).
 - Confirm auth middleware does not log raw bearer tokens.
 - Confirm public routes are rate-limited.
+- Confirm tracking routes use stricter limits than general public endpoints.
 
 ## 4. Functional Smoke Tests
 

@@ -5,7 +5,7 @@ import { createGuardianRoute, listGuardianRoutes } from "../Controller/guardianR
 import { sendCheckpointAlert } from "../Controller/guardianAlertController.js";
 import { trackGuardianProgress } from "../Controller/guardianTrackingController.js";
 import { authMiddleware } from "../middleware/authMiddleware.js";
-import { generousLimiter } from "../middleware/rateLimiter.js";
+import { generousLimiter, trackingPublicLimiter } from "../middleware/rateLimiter.js";
 
 const router = Router();
 
@@ -19,8 +19,8 @@ router.use((req, res, next) => {
 router.get("/safety-score", generousLimiter, getSafetyScore);
 // Public tracking endpoints for contact-shared SafePath links.
 // Supports both /tracking/:trackingId and /tracking?trackingId=... forms.
-router.get("/tracking", generousLimiter, getPublicTripTracking);
-router.get("/tracking/:trackingId", generousLimiter, getPublicTripTracking);
+router.get("/tracking", trackingPublicLimiter, getPublicTripTracking);
+router.get("/tracking/:trackingId", trackingPublicLimiter, getPublicTripTracking);
 
 // Protected Guardian operations require authentication.
 router.post("/alert", authMiddleware, sendCheckpointAlert);

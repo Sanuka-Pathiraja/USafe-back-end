@@ -37,6 +37,18 @@ export const generousLimiter = rateLimit({
 });
 
 /**
+ * Public tracking limiter to reduce token enumeration abuse.
+ * 60 requests per 15 minutes per IP
+ */
+export const trackingPublicLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  message: { error: "Tracking rate limit exceeded." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+/**
  * SMS/Call limiter to prevent abuse
  * 5 requests per hour per IP
  */
