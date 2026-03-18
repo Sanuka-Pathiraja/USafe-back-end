@@ -13,7 +13,7 @@ const AppDataSource = new DataSource({
   database: process.env.DB_NAME,
   synchronize: false,
   logging: true,
-  entities: ["./Model/User.js", "./Model/Contact.js", "./Model/CommunityReport.js", "./Model/Payment.js"],
+  entities: ["./Model/User.js", "./Model/Contact.js", "./Model/CommunityReport.js", "./Model/Payment.js", "./Model/SmsLog.js", "./Model/TripSession.js"],
   migrations: ["src/migrations/*.ts"],
   ssl: useSsl ? { rejectUnauthorized: false } : false,
   extra: { max: 20, connectionTimeoutMillis: dbConnectionTimeout },
