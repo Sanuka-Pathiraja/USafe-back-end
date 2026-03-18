@@ -2,6 +2,7 @@ import crypto from "crypto";
 import AppDataSource from "../config/data-source.js";
 import { sendSms } from "../services/SmsService.js";
 import { TRIP_SESSION_STATUS } from "../Model/TripSession.js";
+import { buildPublicTrackingPayload, isValidTrackingId } from "../utils/tracking.js";
 
 // In-process timer registry for auto-SOS. Move to a persistent queue for multi-instance deployments.
 const tripTimeouts = new Map();
@@ -40,32 +41,6 @@ function resolveTripId(req) {
 
 function resolveTrackingId(req) {
   return String(req.params?.trackingId || req.query?.trackingId || "").trim();
-}
-
-// Tracking IDs are URL-safe short tokens generated server-side.
-function isValidTrackingId(trackingId) {
-  return /^[A-Za-z0-9_-]{6,64}$/.test(trackingId);
-}
-
-// Keep the public payload intentionally minimal to avoid exposing user/contact internals.
-function buildPublicTrackingPayload(trip) {
-  const isTrackingActive = trip.status === TRIP_SESSION_STATUS.ACTIVE;
-  const isTerminal = trip.status === TRIP_SESSION_STATUS.SAFE || trip.status === TRIP_SESSION_STATUS.SOS;
-  const hasLiveLocation = trip.lastKnownLat !== null && trip.lastKnownLng !== null;
-
-  return {
-    trackingId: trip.trackingId,
-    tripName: trip.tripName,
-    status: trip.status,
-    isTrackingActive,
-    isTerminal,
-    hasLiveLocation,
-    expectedEndTime: trip.expectedEndTime,
-    lastKnownLat: trip.lastKnownLat,
-    lastKnownLng: trip.lastKnownLng,
-    lastLocationUpdatedAt: hasLiveLocation ? trip.updatedAt : null,
-    updatedAt: trip.updatedAt,
-  };
 }
 
 function sendError(res, statusCode, message) {
