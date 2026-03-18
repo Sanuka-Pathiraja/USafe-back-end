@@ -56,6 +56,10 @@ function buildPublicTrackingPayload(trip) {
   };
 }
 
+function sendError(res, statusCode, message) {
+  return res.status(statusCode).json({ success: false, message });
+}
+
 function buildTrackingUrl(trackingId) {
   const baseUrl =
     process.env.TRIP_TRACKING_BASE_URL ||
@@ -432,18 +436,18 @@ export async function getPublicTripTracking(req, res) {
     const trackingId = resolveTrackingId(req);
 
     if (!trackingId) {
-      return res.status(400).json({ success: false, message: "trackingId is required" });
+      return sendError(res, 400, "trackingId is required");
     }
 
     if (!isValidTrackingId(trackingId)) {
-      return res.status(400).json({ success: false, message: "Invalid trackingId format" });
+      return sendError(res, 400, "Invalid trackingId format");
     }
 
     const tripRepo = AppDataSource.getRepository("TripSession");
     const trip = await tripRepo.findOneBy({ trackingId });
 
     if (!trip) {
-      return res.status(404).json({ success: false, message: "Trip tracking session not found" });
+      return sendError(res, 404, "Trip tracking session not found");
     }
 
     // Public tracking should always be fresh and never cached by intermediaries.
@@ -458,6 +462,6 @@ export async function getPublicTripTracking(req, res) {
     });
   } catch (error) {
     console.error("GET_PUBLIC_TRIP_TRACKING_ERROR", error);
-    return res.status(500).json({ success: false, message: "Failed to fetch trip tracking data" });
+    return sendError(res, 500, "Failed to fetch trip tracking data");
   }
 }
