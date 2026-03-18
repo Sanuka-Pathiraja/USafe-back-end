@@ -9,6 +9,10 @@ function routeIntersectsZones(routeCoords, redZones) {
         zone.lat, zone.lon
       );
 
+      if (distance < zone.radius) {
+        return true;
+      }
+
     }
   }
 }
