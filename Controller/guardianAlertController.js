@@ -16,6 +16,10 @@ function isSmsConfigured() {
   return Boolean(process.env.QUICKSEND_EMAIL && process.env.QUICKSEND_API_KEY);
 }
 
+function isLikelyPhoneNumber(value) {
+  return /^\+?[0-9]{9,15}$/.test(String(value || "").trim());
+}
+
 export async function sendCheckpointAlert(req, res) {
   try {
     const { routeName, checkpointName, status } = req.body;
@@ -40,6 +44,9 @@ export async function sendCheckpointAlert(req, res) {
 
     if (!parentPhone) {
       return res.status(400).json({ error: "parentPhone is required" });
+    }
+    if (!isLikelyPhoneNumber(parentPhone)) {
+      return res.status(400).json({ error: "Invalid parentPhone format" });
     }
 
     console.log(
