@@ -58,6 +58,10 @@ Optional but recommended:
   - `[AUTH] JWT_SECRET is not configured`
 - Add alerting on repeated 5xx for `/api/guardian/*` and `/trip/*`.
 
+SafePath runtime probe:
+
+- `GET /api/guardian/self-check` (auth required) should return `success: true`.
+
 ## 6. Residual Risks
 
 - Auto-SOS timers are in-process and restored on startup, but still not fully distributed-safe for multi-instance deployments.

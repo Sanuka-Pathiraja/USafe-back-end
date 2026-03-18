@@ -1,10 +1,60 @@
 import { spawn } from "child_process";
 import path from "path";
 import { fileURLToPath } from "url";
+import fs from "fs";
+import AppDataSource from "../config/data-source.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
+
+export async function getGuardianSelfCheck(req, res) {
+  const diagnostics = {
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || "development",
+    safePath: {
+      db: { ok: false },
+      sms: { ok: false },
+      scorer: { ok: false },
+      trips: {
+        expirySweepMs: Number(process.env.TRIP_EXPIRY_SWEEP_MS || 15000),
+      },
+    },
+  };
+
+  try {
+    await AppDataSource.query("SELECT 1");
+    diagnostics.safePath.db = { ok: true };
+  } catch (error) {
+    diagnostics.safePath.db = {
+      ok: false,
+      ...(IS_PRODUCTION ? {} : { error: error.message }),
+    };
+  }
+
+  const hasSmsCreds = Boolean(process.env.QUICKSEND_EMAIL && process.env.QUICKSEND_API_KEY);
+  diagnostics.safePath.sms = {
+    ok: hasSmsCreds,
+    provider: "QuickSend",
+  };
+
+  const scorerScriptPath = path.join(__dirname, "../safety_score.py");
+  diagnostics.safePath.scorer = {
+    ok: fs.existsSync(scorerScriptPath),
+    scriptPath: scorerScriptPath,
+    pythonExecutable: process.env.PYTHON_EXECUTABLE || "python",
+  };
+
+  const allHealthy =
+    diagnostics.safePath.db.ok &&
+    diagnostics.safePath.sms.ok &&
+    diagnostics.safePath.scorer.ok;
+
+  return res.status(allHealthy ? 200 : 503).json({
+    success: allHealthy,
+    diagnostics,
+  });
+}
 
 export function getSafetyScore(req, res) {
   const { lat, lng } = req.query;

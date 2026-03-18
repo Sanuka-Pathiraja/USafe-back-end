@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getSafetyScore } from "../Controller/guardianController.js";
+import { getSafetyScore, getGuardianSelfCheck } from "../Controller/guardianController.js";
 import { getPublicTripTracking } from "../Controller/TripController.js";
 import { createGuardianRoute, listGuardianRoutes } from "../Controller/guardianRoutesController.js";
 import { sendCheckpointAlert } from "../Controller/guardianAlertController.js";
@@ -23,6 +23,7 @@ router.get("/tracking", trackingPublicLimiter, getPublicTripTracking);
 router.get("/tracking/:trackingId", trackingPublicLimiter, getPublicTripTracking);
 
 // Protected Guardian operations require authentication.
+router.get("/self-check", authMiddleware, getGuardianSelfCheck);
 router.post("/alert", authMiddleware, sendCheckpointAlert);
 router.post("/routes", authMiddleware, createGuardianRoute);
 router.get("/routes", authMiddleware, listGuardianRoutes);
