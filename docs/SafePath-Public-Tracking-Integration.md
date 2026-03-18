@@ -72,6 +72,13 @@ if (res.statusCode == 200) {
 }
 ```
 
+## Polling Guidance
+
+- Recommended polling interval: every `10-15` seconds while status is `ACTIVE`.
+- If status becomes `SAFE` or `SOS`, stop polling after one final confirmation refresh.
+- On HTTP `500`/network failures, use exponential backoff (for example: `5s`, `10s`, `20s`, max `60s`).
+- Avoid polling faster than every `5` seconds to reduce unnecessary API load.
+
 ## Security Notes
 
 - The endpoint does not return internal IDs like `userId` or `contactIds`.
