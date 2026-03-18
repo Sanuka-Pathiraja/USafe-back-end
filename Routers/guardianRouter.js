@@ -14,13 +14,14 @@ router.use((req, res, next) => {
 	next();
 });
 
-// Safety score is public (read-only calculation, rate-limited)
+// Public read-only endpoint for coordinate-based safety scoring.
 router.get("/safety-score", getSafetyScore);
-// Public tracking endpoint for contact-shared SafePath links.
+// Public tracking endpoints for contact-shared SafePath links.
+// Supports both /tracking/:trackingId and /tracking?trackingId=... forms.
 router.get("/tracking", getPublicTripTracking);
 router.get("/tracking/:trackingId", getPublicTripTracking);
 
-// Protected endpoints require authentication
+// Protected Guardian operations require authentication.
 router.post("/alert", authMiddleware, sendCheckpointAlert);
 router.post("/routes", authMiddleware, createGuardianRoute);
 router.get("/routes", authMiddleware, listGuardianRoutes);
