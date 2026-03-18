@@ -5,6 +5,12 @@ import { TRIP_SESSION_STATUS } from "../Model/TripSession.js";
 
 // In-process timer registry for auto-SOS. Move to a persistent queue for multi-instance deployments.
 const tripTimeouts = new Map();
+let tripExpirySweepHandle = null;
+
+const RAW_TRIP_EXPIRY_SWEEP_MS = Number(process.env.TRIP_EXPIRY_SWEEP_MS || 15000);
+const TRIP_EXPIRY_SWEEP_MS = Number.isFinite(RAW_TRIP_EXPIRY_SWEEP_MS)
+  ? Math.min(Math.max(RAW_TRIP_EXPIRY_SWEEP_MS, 5000), 60000)
+  : 15000;
 
 function parsePositiveInt(value) {
   const parsed = Number(value);
@@ -177,28 +183,62 @@ function clearTripTimer(tripId) {
   tripTimeouts.delete(tripId);
 }
 
+async function claimTripForSosById(tripId) {
+  const rows = await AppDataSource.query(
+    `
+      UPDATE "trip_sessions"
+      SET "status" = $1, "updatedAt" = now()
+      WHERE "id" = $2 AND "status" = $3
+      RETURNING "id", "userId", "contactIds"
+    `,
+    [TRIP_SESSION_STATUS.SOS, tripId, TRIP_SESSION_STATUS.ACTIVE]
+  );
+
+  return rows?.[0] || null;
+}
+
+export async function processExpiredTrips() {
+  const rows = await AppDataSource.query(
+    `
+      UPDATE "trip_sessions"
+      SET "status" = $1, "updatedAt" = now()
+      WHERE "status" = $2 AND "expectedEndTime" <= now()
+      RETURNING "id", "userId", "contactIds"
+    `,
+    [TRIP_SESSION_STATUS.SOS, TRIP_SESSION_STATUS.ACTIVE]
+  );
+
+  for (const row of rows) {
+    await escalateToEmergencyContacts({
+      tripId: row.id,
+      userId: row.userId,
+      contactIds: row.contactIds || [],
+    });
+    clearTripTimer(row.id);
+  }
+
+  return rows.length;
+}
+
 function scheduleAutoSos(tripSession) {
   clearTripTimer(tripSession.id);
 
   const msUntilExpiry = Math.max(0, new Date(tripSession.expectedEndTime).getTime() - Date.now());
   const timeoutHandle = setTimeout(async () => {
     try {
-      const tripRepo = AppDataSource.getRepository("TripSession");
-      const latestTrip = await tripRepo.findOneBy({ id: tripSession.id });
-      if (!latestTrip || latestTrip.status !== TRIP_SESSION_STATUS.ACTIVE) {
+      const claimedTrip = await claimTripForSosById(tripSession.id);
+      if (!claimedTrip) {
         clearTripTimer(tripSession.id);
         return;
       }
 
       // Session timed out without safe completion, so escalate automatically.
-      latestTrip.status = TRIP_SESSION_STATUS.SOS;
-      await tripRepo.save(latestTrip);
       await escalateToEmergencyContacts({
-        tripId: latestTrip.id,
-        userId: latestTrip.userId,
-        contactIds: latestTrip.contactIds || [],
+        tripId: claimedTrip.id,
+        userId: claimedTrip.userId,
+        contactIds: claimedTrip.contactIds || [],
       });
-      clearTripTimer(latestTrip.id);
+      clearTripTimer(claimedTrip.id);
     } catch (error) {
       console.error("AUTO_SOS_TIMER_ERROR", error);
     }
@@ -208,6 +248,8 @@ function scheduleAutoSos(tripSession) {
 }
 
 export async function bootstrapTripTimers() {
+  const expiredCount = await processExpiredTrips();
+
   const tripRepo = AppDataSource.getRepository("TripSession");
   const activeTrips = await tripRepo.find({
     where: { status: TRIP_SESSION_STATUS.ACTIVE },
@@ -217,7 +259,26 @@ export async function bootstrapTripTimers() {
     scheduleAutoSos(trip);
   }
 
-  console.log(`[TRIP] Restored ${activeTrips.length} active trip timers`);
+  console.log(`[TRIP] Processed ${expiredCount} expired trips and restored ${activeTrips.length} active trip timers`);
+}
+
+export function startTripExpirySweep() {
+  if (tripExpirySweepHandle) return;
+
+  tripExpirySweepHandle = setInterval(async () => {
+    try {
+      const processed = await processExpiredTrips();
+      if (processed > 0) {
+        console.log(`[TRIP] Expiry sweep escalated ${processed} trips`);
+      }
+    } catch (error) {
+      console.error("TRIP_EXPIRY_SWEEP_ERROR", error);
+    }
+  }, TRIP_EXPIRY_SWEEP_MS);
+
+  if (typeof tripExpirySweepHandle.unref === "function") {
+    tripExpirySweepHandle.unref();
+  }
 }
 
 async function getOwnedTripOrThrow({ tripId, userId, tripRepo }) {
