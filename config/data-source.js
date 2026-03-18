@@ -6,7 +6,7 @@ const AppDataSource = new DataSource({
   url: process.env.DATABASE_URL,
   synchronize: false,
   logging: true,
-  entities: ["./Model/User.js", "./Model/Contact.js", "./Model/CommunityReport.js", "./Model/Payment.js", "./Model/SmsLog.js"],
+  entities: ["./Model/User.js", "./Model/Contact.js", "./Model/CommunityReport.js", "./Model/Payment.js", "./Model/SmsLog.js", "./Model/TripSession.js"],
   migrations: ["src/migrations/*.js"],
   ssl: {
     rejectUnauthorized: false,

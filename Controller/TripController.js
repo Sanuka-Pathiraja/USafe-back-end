@@ -1,123 +1,124 @@
 import crypto from "crypto";
 import AppDataSource from "../config/data-source.js";
-import {
-  sendSms,
-  buildStartMessage,
-  buildSafeMessage,
-  buildEmergencyMessage,
-} from "../services/SmsService.js";
+import { sendSms } from "../services/SmsService.js";
+import { TRIP_SESSION_STATUS } from "../Model/TripSession.js";
 
-// In-memory timers. For production-grade reliability across restarts, move this to a persistent queue.
-const activeTripsByUserId = new Map();
+const tripTimeouts = new Map();
 
-function normalizeLocation(raw) {
-  if (!raw) return null;
-  const lat = Number(raw.latitude ?? raw.lat);
-  const lng = Number(raw.longitude ?? raw.lng ?? raw.lon);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
-  return { latitude: lat, longitude: lng };
+function parsePositiveInt(value) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) return null;
+  return parsed;
 }
 
-function toMapsLink(location) {
-  if (!location) return "Location unavailable";
-  return `https://maps.google.com/?q=${location.latitude},${location.longitude}`;
+function parseCoordinate(value, min, max) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < min || parsed > max) return null;
+  return parsed;
 }
 
-function normalizeContacts(rawContacts) {
-  if (!Array.isArray(rawContacts)) return [];
+function parseContactIds(raw) {
+  if (!Array.isArray(raw) || raw.length === 0) return [];
 
-  return rawContacts
-    .map((item, index) => {
-      if (typeof item === "string") {
-        const phone = item.trim();
-        if (!phone) return null;
-        return { phone, name: `Emergency Contact ${index + 1}` };
-      }
-
-      if (item && typeof item === "object") {
-        const phone = String(item.phone || item.to || "").trim();
-        if (!phone) return null;
-        const name = String(item.name || item.contactName || `Emergency Contact ${index + 1}`).trim();
-        return { phone, name: name || `Emergency Contact ${index + 1}` };
-      }
-
-      return null;
-    })
-    .filter(Boolean);
+  return [...new Set(raw.map((item) => Number(item)).filter((item) => Number.isInteger(item) && item > 0))];
 }
 
-async function resolveUserName(req) {
-  const fallback = req.user?.email || "User";
-  const userId = req.user?.id;
-  if (!userId) return fallback;
+function resolveTripId(req) {
+  return String(req.params?.tripId || req.body?.tripId || "").trim();
+}
 
-  try {
-    const userRepo = AppDataSource.getRepository("User");
-    const user = await userRepo.findOneBy({ id: userId });
-    if (!user) return fallback;
-    const fullName = `${user.firstName || ""} ${user.lastName || ""}`.trim();
-    return fullName || user.email || fallback;
-  } catch {
-    return fallback;
+function buildTrackingUrl(trackingId) {
+  const baseUrl =
+    process.env.TRIP_TRACKING_BASE_URL ||
+    process.env.WEB_DASHBOARD_BASE_URL ||
+    process.env.PUBLIC_BASE_URL ||
+    "https://tracking.usafe.app/trip";
+
+  return `${String(baseUrl).replace(/\/+$/, "")}/${encodeURIComponent(trackingId)}`;
+}
+
+async function generateUniqueTrackingId(tripRepo) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const candidate = crypto.randomBytes(6).toString("base64url");
+    const exists = await tripRepo.exist({ where: { trackingId: candidate } });
+    if (!exists) return candidate;
   }
+
+  throw new Error("Unable to generate unique tracking ID");
 }
 
-function clearTripTimer(userId) {
-  const trip = activeTripsByUserId.get(userId);
-  if (!trip) return null;
-  if (trip.timeoutHandle) clearTimeout(trip.timeoutHandle);
-  activeTripsByUserId.delete(userId);
-  return trip;
-}
-
-async function sendEmergencyToContacts(trip) {
-  const userName = trip.userName;
-  const mapsLink = toMapsLink(trip.lastKnownLocation || trip.startLocation);
+async function sendSmsToContactsWithTrackingUrl({ contacts, tripName, durationMinutes, trackingUrl }) {
+  const body = `USafe alert: Trip '${tripName}' has started. ETA ${durationMinutes} mins. Live tracking: ${trackingUrl}`;
 
   const results = await Promise.allSettled(
-    trip.emergencyContacts.map((contact) =>
+    contacts.map((contact) =>
       sendSms({
         to: contact.phone,
-        body: buildEmergencyMessage({
-          userName,
-          tripName: trip.tripName,
-          mapsLink,
-        }),
+        body,
       })
     )
   );
 
-  return results.map((r, i) => ({
-    to: trip.emergencyContacts[i].phone,
-    ok: r.status === "fulfilled",
-    error: r.status === "rejected" ? (r.reason?.message || String(r.reason)) : null,
+  return results.map((result, index) => ({
+    contactId: contacts[index].contactId,
+    phone: contacts[index].phone,
+    ok: result.status === "fulfilled",
+    error: result.status === "rejected" ? String(result.reason?.message || result.reason) : null,
   }));
 }
 
-function scheduleTripTimeout(userId) {
-  const trip = activeTripsByUserId.get(userId);
-  if (!trip) return;
-
-  if (trip.timeoutHandle) clearTimeout(trip.timeoutHandle);
-
-  const msUntilExpiry = Math.max(0, trip.expiresAt - Date.now());
-  trip.timeoutHandle = setTimeout(async () => {
-    const current = activeTripsByUserId.get(userId);
-    if (!current || current.status !== "ACTIVE") return;
-
-    current.status = "EXPIRED";
-    current.expiredAt = Date.now();
-
-    const smsResults = await sendEmergencyToContacts(current);
-    current.emergencyDispatch = {
-      triggered: true,
+async function escalateToEmergencyContacts({ tripId, contactIds }) {
+  console.log(
+    JSON.stringify({
+      event: "TRIP_SOS_ESCALATION_PLACEHOLDER",
+      tripId,
+      contactIds,
       at: new Date().toISOString(),
-      results: smsResults,
-    };
+    })
+  );
+}
 
-    activeTripsByUserId.set(userId, current);
+function clearTripTimer(tripId) {
+  const existing = tripTimeouts.get(tripId);
+  if (!existing) return;
+
+  clearTimeout(existing);
+  tripTimeouts.delete(tripId);
+}
+
+function scheduleAutoSos(tripSession) {
+  clearTripTimer(tripSession.id);
+
+  const msUntilExpiry = Math.max(0, new Date(tripSession.expectedEndTime).getTime() - Date.now());
+  const timeoutHandle = setTimeout(async () => {
+    try {
+      const tripRepo = AppDataSource.getRepository("TripSession");
+      const latestTrip = await tripRepo.findOneBy({ id: tripSession.id });
+      if (!latestTrip || latestTrip.status !== TRIP_SESSION_STATUS.ACTIVE) {
+        clearTripTimer(tripSession.id);
+        return;
+      }
+
+      latestTrip.status = TRIP_SESSION_STATUS.SOS;
+      await tripRepo.save(latestTrip);
+      await escalateToEmergencyContacts({ tripId: latestTrip.id, contactIds: latestTrip.contactIds || [] });
+      clearTripTimer(latestTrip.id);
+    } catch (error) {
+      console.error("AUTO_SOS_TIMER_ERROR", error);
+    }
   }, msUntilExpiry);
+
+  tripTimeouts.set(tripSession.id, timeoutHandle);
+}
+
+async function getOwnedTripOrThrow({ tripId, userId, tripRepo }) {
+  const trip = await tripRepo.findOneBy({ id: tripId, userId });
+  if (!trip) {
+    const error = new Error("Trip session not found");
+    error.statusCode = 404;
+    throw error;
+  }
+  return trip;
 }
 
 export async function startTrip(req, res) {
@@ -127,199 +128,264 @@ export async function startTrip(req, res) {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
-    const { tripName, durationMinutes, emergencyContacts, startLocation } = req.body || {};
+    const { tripName, durationMinutes, contactIds } = req.body || {};
 
-    const safeTripName = String(tripName || "").trim();
-    const safeDuration = Number(durationMinutes);
-    const contacts = normalizeContacts(emergencyContacts);
-    const normalizedStartLocation = normalizeLocation(startLocation);
+    const cleanTripName = String(tripName || "").trim();
+    const safeDurationMinutes = parsePositiveInt(durationMinutes);
+    const safeContactIds = parseContactIds(contactIds);
 
-    if (!safeTripName) {
+    if (!cleanTripName) {
       return res.status(400).json({ success: false, message: "tripName is required" });
     }
-    if (!Number.isFinite(safeDuration) || safeDuration <= 0) {
-      return res.status(400).json({ success: false, message: "durationMinutes must be a positive number" });
-    }
-    if (contacts.length === 0) {
-      return res.status(400).json({ success: false, message: "emergencyContacts must contain at least one phone number" });
+
+    if (!safeDurationMinutes) {
+      return res.status(400).json({ success: false, message: "durationMinutes must be a positive integer" });
     }
 
-    // One active trip per user. Starting a new one replaces the old timer.
-    clearTripTimer(userId);
+    if (safeContactIds.length === 0) {
+      return res.status(400).json({ success: false, message: "contactIds must contain at least one valid contact ID" });
+    }
 
-    const userName = await resolveUserName(req);
+    const tripRepo = AppDataSource.getRepository("TripSession");
+    const contactRepo = AppDataSource.getRepository("Contact");
+
+    const contacts = await contactRepo.find({
+      where: safeContactIds.map((contactId) => ({ contactId, user: { id: userId } })),
+      select: {
+        contactId: true,
+        phone: true,
+      },
+    });
+
+    if (contacts.length !== safeContactIds.length) {
+      return res.status(400).json({
+        success: false,
+        message: "One or more contactIds are invalid for this user",
+      });
+    }
+
     const now = Date.now();
+    const expectedEndTime = new Date(now + safeDurationMinutes * 60 * 1000);
+    const trackingId = await generateUniqueTrackingId(tripRepo);
 
-    const trip = {
-      tripId: crypto.randomUUID(),
+    const session = tripRepo.create({
       userId,
-      userName,
-      tripName: safeTripName,
-      durationMinutes: safeDuration,
-      emergencyContacts: contacts,
-      startLocation: normalizedStartLocation,
-      lastKnownLocation: normalizedStartLocation,
-      startedAt: now,
-      expiresAt: now + safeDuration * 60 * 1000,
-      timeoutHandle: null,
-      status: "ACTIVE",
-      emergencyDispatch: { triggered: false },
-    };
+      tripName: cleanTripName,
+      status: TRIP_SESSION_STATUS.ACTIVE,
+      expectedEndTime,
+      trackingId,
+      lastKnownLat: null,
+      lastKnownLng: null,
+      contactIds: safeContactIds,
+    });
 
-    activeTripsByUserId.set(userId, trip);
-    scheduleTripTimeout(userId);
+    const savedSession = await tripRepo.save(session);
+    const trackingUrl = buildTrackingUrl(savedSession.trackingId);
 
-    const smsResults = await Promise.allSettled(
-      contacts.map((contact) =>
-        sendSms({
-          to: contact.phone,
-          body: buildStartMessage({
-            contactName: contact.name,
-            userName,
-            tripName: safeTripName,
-            durationMinutes: safeDuration,
-          }),
-        })
-      )
-    );
+    const notifications = await sendSmsToContactsWithTrackingUrl({
+      contacts,
+      tripName: savedSession.tripName,
+      durationMinutes: safeDurationMinutes,
+      trackingUrl,
+    });
 
-    const startNotifications = smsResults.map((r, i) => ({
-      to: contacts[i].phone,
-      ok: r.status === "fulfilled",
-      error: r.status === "rejected" ? (r.reason?.message || String(r.reason)) : null,
-    }));
+    scheduleAutoSos(savedSession);
 
-    return res.status(200).json({
+    return res.status(201).json({
       success: true,
-      message: "Trip started and server-side timer is active",
-      tripId: trip.tripId,
-      tripName: trip.tripName,
-      startedAt: new Date(trip.startedAt).toISOString(),
-      expiresAt: new Date(trip.expiresAt).toISOString(),
-      notifications: startNotifications,
+      message: "Trip safety session started",
+      data: {
+        tripId: savedSession.id,
+        tripName: savedSession.tripName,
+        status: savedSession.status,
+        expectedEndTime: savedSession.expectedEndTime,
+        trackingId: savedSession.trackingId,
+        trackingUrl,
+        notifications,
+      },
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    console.error("START_TRIP_ERROR", error);
+    return res.status(500).json({ success: false, message: "Failed to start trip session" });
   }
 }
 
-export async function markTripSafe(req, res) {
+export async function updateLocation(req, res) {
   try {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ success: false, message: "Unauthorized" });
 
-    const trip = clearTripTimer(userId);
-    if (!trip || trip.status !== "ACTIVE") {
-      return res.status(404).json({ success: false, message: "No active trip found" });
+    const tripId = resolveTripId(req);
+    const lat = parseCoordinate(req.body?.lat, -90, 90);
+    const lng = parseCoordinate(req.body?.lng, -180, 180);
+
+    if (!tripId) {
+      return res.status(400).json({ success: false, message: "tripId is required" });
     }
 
-    trip.status = "SAFE";
-    const safeAt = Date.now();
+    if (lat === null || lng === null) {
+      return res.status(400).json({ success: false, message: "lat and lng are required and must be valid coordinates" });
+    }
 
-    const smsResults = await Promise.allSettled(
-      trip.emergencyContacts.map((contact) =>
-        sendSms({
-          to: contact.phone,
-          body: buildSafeMessage({
-            userName: trip.userName,
-            tripName: trip.tripName,
-          }),
-        })
-      )
-    );
+    const tripRepo = AppDataSource.getRepository("TripSession");
+    const trip = await getOwnedTripOrThrow({ tripId, userId, tripRepo });
 
-    const safeNotifications = smsResults.map((r, i) => ({
-      to: trip.emergencyContacts[i].phone,
-      ok: r.status === "fulfilled",
-      error: r.status === "rejected" ? (r.reason?.message || String(r.reason)) : null,
-    }));
+    if (trip.status !== TRIP_SESSION_STATUS.ACTIVE) {
+      return res.status(409).json({ success: false, message: "Only ACTIVE trips can receive location updates" });
+    }
+
+    trip.lastKnownLat = lat;
+    trip.lastKnownLng = lng;
+    const updatedTrip = await tripRepo.save(trip);
 
     return res.status(200).json({
       success: true,
-      message: "Active trip marked safe and timer cancelled",
-      tripId: trip.tripId,
-      safeAt: new Date(safeAt).toISOString(),
-      notifications: safeNotifications,
+      message: "Location updated",
+      data: {
+        tripId: updatedTrip.id,
+        lastKnownLat: updatedTrip.lastKnownLat,
+        lastKnownLng: updatedTrip.lastKnownLng,
+        updatedAt: updatedTrip.updatedAt,
+      },
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    if (error.statusCode === 404) {
+      return res.status(404).json({ success: false, message: error.message });
+    }
+
+    console.error("UPDATE_TRIP_LOCATION_ERROR", error);
+    return res.status(500).json({ success: false, message: "Failed to update trip location" });
   }
 }
 
-export async function addTripTime(req, res) {
+export async function addTime(req, res) {
   try {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ success: false, message: "Unauthorized" });
 
-    const trip = activeTripsByUserId.get(userId);
-    if (!trip || trip.status !== "ACTIVE") {
-      return res.status(404).json({ success: false, message: "No active trip found" });
+    const tripId = resolveTripId(req);
+    const extraMinutes = parsePositiveInt(req.body?.extraMinutes);
+
+    if (!tripId) {
+      return res.status(400).json({ success: false, message: "tripId is required" });
     }
 
-    trip.expiresAt += 15 * 60 * 1000;
-    activeTripsByUserId.set(userId, trip);
-    scheduleTripTimeout(userId);
+    if (!extraMinutes) {
+      return res.status(400).json({ success: false, message: "extraMinutes must be a positive integer" });
+    }
+
+    const tripRepo = AppDataSource.getRepository("TripSession");
+    const trip = await getOwnedTripOrThrow({ tripId, userId, tripRepo });
+
+    if (trip.status !== TRIP_SESSION_STATUS.ACTIVE) {
+      return res.status(409).json({ success: false, message: "Only ACTIVE trips can be extended" });
+    }
+
+    trip.expectedEndTime = new Date(new Date(trip.expectedEndTime).getTime() + extraMinutes * 60 * 1000);
+    const updatedTrip = await tripRepo.save(trip);
+
+    scheduleAutoSos(updatedTrip);
 
     return res.status(200).json({
       success: true,
-      message: "Added 15 minutes to active trip timer",
-      tripId: trip.tripId,
-      expiresAt: new Date(trip.expiresAt).toISOString(),
-      minutesAdded: 15,
+      message: "Trip time updated",
+      data: {
+        tripId: updatedTrip.id,
+        extraMinutes,
+        expectedEndTime: updatedTrip.expectedEndTime,
+      },
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    if (error.statusCode === 404) {
+      return res.status(404).json({ success: false, message: error.message });
+    }
+
+    console.error("ADD_TRIP_TIME_ERROR", error);
+    return res.status(500).json({ success: false, message: "Failed to add trip time" });
   }
 }
 
-export async function updateTripLocation(req, res) {
+export async function endTripSafe(req, res) {
   try {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ success: false, message: "Unauthorized" });
 
-    const trip = activeTripsByUserId.get(userId);
-    if (!trip || trip.status !== "ACTIVE") {
-      return res.status(404).json({ success: false, message: "No active trip found" });
+    const tripId = resolveTripId(req);
+    if (!tripId) {
+      return res.status(400).json({ success: false, message: "tripId is required" });
     }
 
-    const location = normalizeLocation(req.body || {});
-    if (!location) {
-      return res.status(400).json({ success: false, message: "latitude and longitude are required" });
+    const tripRepo = AppDataSource.getRepository("TripSession");
+    const trip = await getOwnedTripOrThrow({ tripId, userId, tripRepo });
+
+    if (trip.status !== TRIP_SESSION_STATUS.ACTIVE) {
+      return res.status(409).json({ success: false, message: "Only ACTIVE trips can be ended safely" });
     }
 
-    trip.lastKnownLocation = location;
-    trip.lastLocationUpdatedAt = Date.now();
-    activeTripsByUserId.set(userId, trip);
+    trip.status = TRIP_SESSION_STATUS.SAFE;
+    const updatedTrip = await tripRepo.save(trip);
+    clearTripTimer(updatedTrip.id);
 
     return res.status(200).json({
       success: true,
-      message: "Last known location updated",
-      tripId: trip.tripId,
-      lastKnownLocation: trip.lastKnownLocation,
-      updatedAt: new Date(trip.lastLocationUpdatedAt).toISOString(),
+      message: "Trip marked as SAFE",
+      data: {
+        tripId: updatedTrip.id,
+        status: updatedTrip.status,
+        updatedAt: updatedTrip.updatedAt,
+      },
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    if (error.statusCode === 404) {
+      return res.status(404).json({ success: false, message: error.message });
+    }
+
+    console.error("END_TRIP_SAFE_ERROR", error);
+    return res.status(500).json({ success: false, message: "Failed to end trip safely" });
   }
 }
 
-export function getTripDebugState(req, res) {
-  const userId = req.user?.id;
-  if (!userId) return res.status(401).json({ success: false, message: "Unauthorized" });
+export async function triggerSOS(req, res) {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ success: false, message: "Unauthorized" });
 
-  const trip = activeTripsByUserId.get(userId);
-  if (!trip) return res.status(404).json({ success: false, message: "No active trip found" });
+    const tripId = resolveTripId(req);
+    if (!tripId) {
+      return res.status(400).json({ success: false, message: "tripId is required" });
+    }
 
-  return res.status(200).json({
-    success: true,
-    trip: {
-      tripId: trip.tripId,
-      tripName: trip.tripName,
-      status: trip.status,
-      startedAt: new Date(trip.startedAt).toISOString(),
-      expiresAt: new Date(trip.expiresAt).toISOString(),
-      lastKnownLocation: trip.lastKnownLocation,
-      emergencyDispatch: trip.emergencyDispatch,
-    },
-  });
+    const tripRepo = AppDataSource.getRepository("TripSession");
+    const trip = await getOwnedTripOrThrow({ tripId, userId, tripRepo });
+
+    if (trip.status === TRIP_SESSION_STATUS.SOS) {
+      return res.status(409).json({ success: false, message: "SOS already triggered for this trip" });
+    }
+
+    trip.status = TRIP_SESSION_STATUS.SOS;
+    const updatedTrip = await tripRepo.save(trip);
+    clearTripTimer(updatedTrip.id);
+
+    await escalateToEmergencyContacts({
+      tripId: updatedTrip.id,
+      contactIds: updatedTrip.contactIds || [],
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "SOS triggered",
+      data: {
+        tripId: updatedTrip.id,
+        status: updatedTrip.status,
+        updatedAt: updatedTrip.updatedAt,
+      },
+    });
+  } catch (error) {
+    if (error.statusCode === 404) {
+      return res.status(404).json({ success: false, message: error.message });
+    }
+
+    console.error("TRIGGER_SOS_ERROR", error);
+    return res.status(500).json({ success: false, message: "Failed to trigger SOS" });
+  }
 }
