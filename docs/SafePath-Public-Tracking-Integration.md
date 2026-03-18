@@ -90,3 +90,6 @@ if (res.statusCode == 200) {
 - The endpoint does not return internal IDs like `userId` or `contactIds`.
 - Cache headers are disabled so location data remains fresh.
 - Status values are controlled by backend enum: `ACTIVE`, `SAFE`, `SOS`.
+- Treat `trackingId` as a share token. Do not store it in long-lived analytics logs.
+- Do not expose the raw tracking URL in public app screenshots or crash reports.
+- Frontend should avoid persisting tracking responses in local disk caches unless encrypted.
