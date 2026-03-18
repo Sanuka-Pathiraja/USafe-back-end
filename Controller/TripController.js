@@ -109,16 +109,64 @@ async function sendSmsToContactsWithTrackingUrl({ contacts, tripName, durationMi
   }));
 }
 
-// Placeholder hook for future escalation provider integration.
-async function escalateToEmergencyContacts({ tripId, contactIds }) {
+async function escalateToEmergencyContacts({ tripId, userId, contactIds }) {
+  if (!Array.isArray(contactIds) || contactIds.length === 0) {
+    return { attempted: 0, sent: 0, failed: 0, results: [] };
+  }
+
+  const contactRepo = AppDataSource.getRepository("Contact");
+  const contacts = await contactRepo.find({
+    where: contactIds.map((contactId) => ({
+      contactId,
+      user: { id: userId },
+    })),
+    select: {
+      contactId: true,
+      name: true,
+      phone: true,
+    },
+  });
+
+  const message =
+    "USafe SOS: Emergency detected during active trip. Please check immediately.";
+
+  const outcomes = await Promise.allSettled(
+    contacts.map((contact) =>
+      sendSms({
+        to: contact.phone,
+        body: message,
+      })
+    )
+  );
+
+  const results = outcomes.map((outcome, index) => ({
+    contactId: contacts[index]?.contactId,
+    phone: contacts[index]?.phone,
+    ok: outcome.status === "fulfilled",
+    error: outcome.status === "rejected" ? String(outcome.reason?.message || outcome.reason) : null,
+  }));
+
+  const sent = results.filter((item) => item.ok).length;
+  const failed = results.length - sent;
+
   console.log(
     JSON.stringify({
-      event: "TRIP_SOS_ESCALATION_PLACEHOLDER",
+      event: "TRIP_SOS_ESCALATION_DISPATCHED",
       tripId,
-      contactIds,
+      userId,
+      attempted: results.length,
+      sent,
+      failed,
       at: new Date().toISOString(),
     })
   );
+
+  return {
+    attempted: results.length,
+    sent,
+    failed,
+    results,
+  };
 }
 
 function clearTripTimer(tripId) {
@@ -145,7 +193,11 @@ function scheduleAutoSos(tripSession) {
       // Session timed out without safe completion, so escalate automatically.
       latestTrip.status = TRIP_SESSION_STATUS.SOS;
       await tripRepo.save(latestTrip);
-      await escalateToEmergencyContacts({ tripId: latestTrip.id, contactIds: latestTrip.contactIds || [] });
+      await escalateToEmergencyContacts({
+        tripId: latestTrip.id,
+        userId: latestTrip.userId,
+        contactIds: latestTrip.contactIds || [],
+      });
       clearTripTimer(latestTrip.id);
     } catch (error) {
       console.error("AUTO_SOS_TIMER_ERROR", error);
@@ -417,6 +469,7 @@ export async function triggerSOS(req, res) {
     // Manual SOS path uses the same escalation placeholder for now.
     await escalateToEmergencyContacts({
       tripId: updatedTrip.id,
+      userId: updatedTrip.userId,
       contactIds: updatedTrip.contactIds || [],
     });
 
