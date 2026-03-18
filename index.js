@@ -62,6 +62,7 @@ app.use("/contact", contactRouter);
 app.use("/report", communityReportRouter);
 app.use("/api/guardian", guardianRouter);
 app.use("/trip", tripRouter);
+app.use("/api/trip", tripRouter);
 
 /*======================================PayHere Routes=========================================*/
 // import payHereRouter from "./Routers/PayHereRouter.js";
