@@ -70,6 +70,24 @@ const getSafeRoute = async (req, res) => {
         }
       }
     }
+    const responseData = {
+      start: start,
+      end: end,
+      redZones: redZones.map(zone => ({
+        center: { lat: zone.lat, lon: zone.lon },
+        radius: zone.radius,
+        polygon: circleToPolygon(zone.lon, zone.lat, zone.radius, 32)
+          .map(coord => ({ lat: coord[1], lon: coord[0] }))
+      })),
+      originalRoute: {
+        path: originalRouteCoords.map(coord => ({ lat: coord[1], lon: coord[0] })),
+        distance: originalRoute.distance,
+        duration: originalRoute.duration,
+        isDangerous: originalIsDangerous,
+        color: originalIsDangerous ? 'red' : 'blue'
+      },
+      totalRoutesChecked: response.data.routes.length
+    };
     
   
 }
