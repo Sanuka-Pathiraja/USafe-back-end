@@ -38,6 +38,14 @@ const getSafeRoute = async (req, res) => {
 
     for (let i = 0; i < response.data.routes.length; i++) {
       const route = response.data.routes[i];
+      if (!routeIntersectsZones(route.geometry.coordinates, redZones)) {
+        console.log(`✅ Route ${i + 1} is SAFE!`);
+        safeRoute = route.geometry.coordinates;
+        safeRouteData = route;
+        break;
+      } else {
+        console.log(`❌ Route ${i + 1} passes through danger zone`);
+      }
     }
     
   
