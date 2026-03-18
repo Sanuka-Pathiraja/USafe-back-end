@@ -51,6 +51,16 @@ const getSafeRoute = async (req, res) => {
 
       console.log("\n⚠️ No safe route found in initial alternatives");
       console.log("Attempting to find alternative path...");
+
+      const alternativeResponse = await axios.get(url, {
+        params: {
+          geometries: 'geojson',
+          access_token: process.env.MAPBOX_TOKEN,
+          alternatives: true,
+          overview: 'full',
+          exclude: 'toll'
+        }
+      });
     }
     
   
