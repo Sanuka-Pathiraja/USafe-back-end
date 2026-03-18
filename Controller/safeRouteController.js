@@ -108,8 +108,16 @@ const getSafeRoute = async (req, res) => {
     res.json(responseData);
     
   
-}
-catch (error) {
-    console.error("Error fetching route:", error);
-    res.status(500).json({ error: "Failed to fetch route" });
-  } };
+  } catch (err) {
+
+    console.error("Error:", err.response?.data || err.message);
+
+    res.status(500).json({ 
+      error: "Error fetching route",
+      details: err.response?.data || err.message
+    });
+
+  }
+};
+
+module.exports = { getSafeRoute };
