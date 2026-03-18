@@ -17,13 +17,23 @@ This endpoint is public and intended for emergency contacts who open the shared 
     "tripName": "Office to Home",
     "status": "ACTIVE",
     "isTrackingActive": true,
+    "isTerminal": false,
+    "hasLiveLocation": true,
     "expectedEndTime": "2026-03-19T15:30:00.000Z",
     "lastKnownLat": 6.9271,
     "lastKnownLng": 79.8612,
+    "lastLocationUpdatedAt": "2026-03-19T15:02:10.000Z",
     "updatedAt": "2026-03-19T15:02:10.000Z"
   }
 }
 ```
+
+### Field Notes
+
+- `isTrackingActive`: `true` only when status is `ACTIVE`.
+- `isTerminal`: `true` when status is `SAFE` or `SOS`.
+- `hasLiveLocation`: indicates whether a real location has been received yet.
+- `lastLocationUpdatedAt`: `null` until first valid location update is saved.
 
 ## Errors
 
