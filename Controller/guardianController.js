@@ -31,7 +31,10 @@ export function getSafetyScore(req, res) {
   let errorString = "";
   let settled = false;
 
-  const timeoutMs = Number(process.env.SAFETY_SCORE_TIMEOUT_MS || 8000);
+  const rawTimeoutMs = Number(process.env.SAFETY_SCORE_TIMEOUT_MS || 8000);
+  const timeoutMs = Number.isFinite(rawTimeoutMs)
+    ? Math.min(Math.max(rawTimeoutMs, 1000), 30000)
+    : 8000;
   const timeoutHandle = setTimeout(() => {
     if (!settled) {
       pythonProcess.kill("SIGTERM");
@@ -59,22 +62,34 @@ export function getSafetyScore(req, res) {
     }
   });
 
-  pythonProcess.on("close", () => {
+  pythonProcess.on("close", (code) => {
     if (settled) {
       return;
+    }
+
+    clearTimeout(timeoutHandle);
+
+    if (code !== 0) {
+      settled = true;
+      return res.status(502).json({
+        error: "Safety scoring failed",
+        ...(IS_PRODUCTION
+          ? {}
+          : {
+              details: errorString.trim() || `Scorer exited with code ${code}`,
+            }),
+      });
     }
 
     try {
       const result = JSON.parse(dataString);
       settled = true;
-      clearTimeout(timeoutHandle);
       return res.status(200).json(result);
     } catch (e) {
       if (errorString) {
         console.error("Python error:", errorString.trim());
       }
       settled = true;
-      clearTimeout(timeoutHandle);
       return res.status(502).json({
         error: "Safety scoring failed",
         ...(IS_PRODUCTION
