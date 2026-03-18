@@ -23,6 +23,7 @@ import Userrouter from "./Routers/UserRouter.js";
 import contactRouter from "./Routers/ContactRouter.js";
 import communityReportRouter from "./Routers/CommunityReportRouter.js";
 import guardianRouter from "./Routers/guardianRouter.js";
+import tripRouter from "./Routers/TripRouter.js";
 import healthRouter from "./Routers/healthRouter.js";
 import { standardLimiter, generousLimiter } from "./middleware/rateLimiter.js";
 import { initializeWebSocket } from "./utils/wsHub.js";
@@ -60,6 +61,7 @@ app.use("/user", Userrouter);
 app.use("/contact", contactRouter);
 app.use("/report", communityReportRouter);
 app.use("/api/guardian", guardianRouter);
+app.use("/trip", tripRouter);
 
 /*======================================PayHere Routes=========================================*/
 // import payHereRouter from "./Routers/PayHereRouter.js";
