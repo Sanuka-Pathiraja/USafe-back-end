@@ -79,6 +79,12 @@ if (res.statusCode == 200) {
 - On HTTP `500`/network failures, use exponential backoff (for example: `5s`, `10s`, `20s`, max `60s`).
 - Avoid polling faster than every `5` seconds to reduce unnecessary API load.
 
+## Null Location Handling
+
+- `hasLiveLocation = false` means the backend has not received a valid location update yet.
+- In this state, `lastKnownLat`, `lastKnownLng`, and `lastLocationUpdatedAt` can be `null`.
+- Frontend should show a placeholder such as `Waiting for first location update` instead of rendering a marker at `0,0`.
+
 ## Security Notes
 
 - The endpoint does not return internal IDs like `userId` or `contactIds`.
