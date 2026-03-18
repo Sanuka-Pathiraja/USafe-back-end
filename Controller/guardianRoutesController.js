@@ -14,9 +14,12 @@ const GUARDIAN_ROUTES_TABLE = resolveSafeTableName(
   process.env.GUARDIAN_ROUTES_TABLE,
   DEFAULT_GUARDIAN_ROUTES_TABLE
 );
+const MAX_ROUTE_NAME_LENGTH = 120;
+const MAX_CHECKPOINTS = 100;
+const MAX_CHECKPOINT_NAME_LENGTH = 120;
 
 function validateCheckpoints(checkpoints) {
-  if (!Array.isArray(checkpoints) || checkpoints.length === 0) {
+  if (!Array.isArray(checkpoints) || checkpoints.length === 0 || checkpoints.length > MAX_CHECKPOINTS) {
     return false;
   }
 
@@ -25,8 +28,10 @@ function validateCheckpoints(checkpoints) {
       return false;
     }
 
+    const checkpointName =
+      typeof checkpoint.name === "string" ? checkpoint.name.trim() : "";
     const hasName =
-      typeof checkpoint.name === "string" && checkpoint.name.trim().length > 0;
+      checkpointName.length > 0 && checkpointName.length <= MAX_CHECKPOINT_NAME_LENGTH;
     const lat = Number(checkpoint.lat);
     const lng = Number(checkpoint.lng);
     const hasLat = Number.isFinite(lat) && lat >= -90 && lat <= 90;
@@ -52,7 +57,11 @@ export async function createGuardianRoute(req, res) {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
-    if (!routeName || !validateCheckpoints(checkpoints)) {
+    if (
+      !routeName ||
+      routeName.length > MAX_ROUTE_NAME_LENGTH ||
+      !validateCheckpoints(checkpoints)
+    ) {
       console.log("❌ Validation failed:", {
         name: routeName,
         checkpointsLength: checkpoints?.length,
