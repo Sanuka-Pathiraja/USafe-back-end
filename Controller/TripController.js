@@ -36,6 +36,19 @@ function isValidTrackingId(trackingId) {
   return /^[A-Za-z0-9_-]{6,64}$/.test(trackingId);
 }
 
+function buildPublicTrackingPayload(trip) {
+  return {
+    trackingId: trip.trackingId,
+    tripName: trip.tripName,
+    status: trip.status,
+    isTrackingActive: trip.status === TRIP_SESSION_STATUS.ACTIVE,
+    expectedEndTime: trip.expectedEndTime,
+    lastKnownLat: trip.lastKnownLat,
+    lastKnownLng: trip.lastKnownLng,
+    updatedAt: trip.updatedAt,
+  };
+}
+
 function buildTrackingUrl(trackingId) {
   const baseUrl =
     process.env.TRIP_TRACKING_BASE_URL ||
@@ -430,16 +443,7 @@ export async function getPublicTripTracking(req, res) {
     return res.status(200).json({
       success: true,
       message: "Trip tracking data fetched",
-      data: {
-        trackingId: trip.trackingId,
-        tripName: trip.tripName,
-        status: trip.status,
-        isTrackingActive: trip.status === TRIP_SESSION_STATUS.ACTIVE,
-        expectedEndTime: trip.expectedEndTime,
-        lastKnownLat: trip.lastKnownLat,
-        lastKnownLng: trip.lastKnownLng,
-        updatedAt: trip.updatedAt,
-      },
+      data: buildPublicTrackingPayload(trip),
     });
   } catch (error) {
     console.error("GET_PUBLIC_TRIP_TRACKING_ERROR", error);
