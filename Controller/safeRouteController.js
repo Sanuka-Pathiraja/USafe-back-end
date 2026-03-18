@@ -47,6 +47,11 @@ const getSafeRoute = async (req, res) => {
         console.log(`❌ Route ${i + 1} passes through danger zone`);
       }
     }
+    if (!safeRoute && originalIsDangerous) {
+
+      console.log("\n⚠️ No safe route found in initial alternatives");
+      console.log("Attempting to find alternative path...");
+    }
     
   
 }
