@@ -61,6 +61,14 @@ const getSafeRoute = async (req, res) => {
           exclude: 'toll'
         }
       });
+      for (let route of alternativeResponse.data.routes) {
+        if (!routeIntersectsZones(route.geometry.coordinates, redZones)) {
+          safeRoute = route.geometry.coordinates;
+          safeRouteData = route;
+          console.log("✅ Found safe alternative route!");
+          break;
+        }
+      }
     }
     
   
