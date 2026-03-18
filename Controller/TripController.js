@@ -32,10 +32,12 @@ function resolveTrackingId(req) {
   return String(req.params?.trackingId || req.query?.trackingId || "").trim();
 }
 
+// Tracking IDs are URL-safe short tokens generated server-side.
 function isValidTrackingId(trackingId) {
   return /^[A-Za-z0-9_-]{6,64}$/.test(trackingId);
 }
 
+// Keep the public payload intentionally minimal to avoid exposing user/contact internals.
 function buildPublicTrackingPayload(trip) {
   const isTrackingActive = trip.status === TRIP_SESSION_STATUS.ACTIVE;
   const isTerminal = trip.status === TRIP_SESSION_STATUS.SAFE || trip.status === TRIP_SESSION_STATUS.SOS;
@@ -60,6 +62,7 @@ function sendError(res, statusCode, message) {
   return res.status(statusCode).json({ success: false, message });
 }
 
+// Disable HTTP caching so contacts always see near-real-time trip state.
 function setNoCacheHeaders(res) {
   res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
   res.set("Pragma", "no-cache");
@@ -439,6 +442,7 @@ export async function triggerSOS(req, res) {
 // Public endpoint used by the shared tracking link shown to emergency contacts.
 export async function getPublicTripTracking(req, res) {
   try {
+    // Accept both /tracking/:trackingId and /tracking?trackingId=... forms.
     const trackingId = resolveTrackingId(req);
 
     if (!trackingId) {
