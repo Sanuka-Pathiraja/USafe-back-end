@@ -207,6 +207,19 @@ function scheduleAutoSos(tripSession) {
   tripTimeouts.set(tripSession.id, timeoutHandle);
 }
 
+export async function bootstrapTripTimers() {
+  const tripRepo = AppDataSource.getRepository("TripSession");
+  const activeTrips = await tripRepo.find({
+    where: { status: TRIP_SESSION_STATUS.ACTIVE },
+  });
+
+  for (const trip of activeTrips) {
+    scheduleAutoSos(trip);
+  }
+
+  console.log(`[TRIP] Restored ${activeTrips.length} active trip timers`);
+}
+
 async function getOwnedTripOrThrow({ tripId, userId, tripRepo }) {
   const trip = await tripRepo.findOneBy({ id: tripId, userId });
   if (!trip) {

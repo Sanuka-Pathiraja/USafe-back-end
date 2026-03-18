@@ -27,6 +27,7 @@ import tripRouter from "./Routers/TripRouter.js";
 import healthRouter from "./Routers/healthRouter.js";
 import { standardLimiter, generousLimiter } from "./middleware/rateLimiter.js";
 import { initializeWebSocket } from "./utils/wsHub.js";
+import { bootstrapTripTimers } from "./Controller/TripController.js";
 
 /* ===================== FEATURE TOGGLES ===================== */
 const DISABLE_CALLS = process.env.DISABLE_CALLS === "true";
@@ -85,6 +86,7 @@ async function startServer() {
   try {
     await AppDataSource.initialize();
     console.log("✅ Data Source initialized! Connected to database.");
+    await bootstrapTripTimers();
   } catch (err) {
     console.error("❌ Error during Data Source initialization:", err);
     process.exit(1);
