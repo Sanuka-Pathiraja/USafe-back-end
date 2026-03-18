@@ -4,7 +4,9 @@ export class CreateTripSessions1773300000000 implements MigrationInterface {
   name = "CreateTripSessions1773300000000";
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    // Required for uuid_generate_v4() default on PostgreSQL.
     await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`);
+    // Creates status enum used by trip_sessions.status.
     await queryRunner.query(`CREATE TYPE "public"."trip_sessions_status_enum" AS ENUM('ACTIVE', 'SAFE', 'SOS')`);
     await queryRunner.query(`
       CREATE TABLE "trip_sessions" (

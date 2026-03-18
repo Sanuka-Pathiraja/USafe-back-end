@@ -13,6 +13,7 @@ const AppDataSource = new DataSource({
   database: process.env.DB_NAME,
   synchronize: false,
   logging: true,
+  // Includes TripSession so trip lifecycle APIs can read/write persistent session state.
   entities: ["./Model/User.js", "./Model/Contact.js", "./Model/CommunityReport.js", "./Model/Payment.js", "./Model/SmsLog.js", "./Model/TripSession.js"],
   migrations: ["src/migrations/*.js"],
   ssl: useSsl

@@ -1,11 +1,13 @@
 import { EntitySchema } from "typeorm";
 
+// Canonical lifecycle states used by TripSession records and API responses.
 export const TRIP_SESSION_STATUS = {
   ACTIVE: "ACTIVE",
   SAFE: "SAFE",
   SOS: "SOS",
 };
 
+// Persists a user's SafePath trip session for timer, tracking, and SOS workflows.
 export default new EntitySchema({
   name: "TripSession",
   tableName: "trip_sessions",

@@ -10,6 +10,7 @@ import {
 
 const router = Router();
 
+// SafePath session endpoints; all routes require a valid JWT.
 router.post("/start", authMiddleware, startTrip);
 router.put("/:tripId/location", authMiddleware, updateLocation);
 router.put("/:tripId/add-time", authMiddleware, addTime);

@@ -3,6 +3,7 @@ import AppDataSource from "../config/data-source.js";
 import { sendSms } from "../services/SmsService.js";
 import { TRIP_SESSION_STATUS } from "../Model/TripSession.js";
 
+// In-process timer registry for auto-SOS. Move to a persistent queue for multi-instance deployments.
 const tripTimeouts = new Map();
 
 function parsePositiveInt(value) {
@@ -67,6 +68,7 @@ async function sendSmsToContactsWithTrackingUrl({ contacts, tripName, durationMi
   }));
 }
 
+// Placeholder hook for future escalation provider integration.
 async function escalateToEmergencyContacts({ tripId, contactIds }) {
   console.log(
     JSON.stringify({
@@ -99,6 +101,7 @@ function scheduleAutoSos(tripSession) {
         return;
       }
 
+      // Session timed out without safe completion, so escalate automatically.
       latestTrip.status = TRIP_SESSION_STATUS.SOS;
       await tripRepo.save(latestTrip);
       await escalateToEmergencyContacts({ tripId: latestTrip.id, contactIds: latestTrip.contactIds || [] });
@@ -149,6 +152,7 @@ export async function startTrip(req, res) {
     const tripRepo = AppDataSource.getRepository("TripSession");
     const contactRepo = AppDataSource.getRepository("Contact");
 
+    // Enforce that only this user's saved contacts can be attached to the trip.
     const contacts = await contactRepo.find({
       where: safeContactIds.map((contactId) => ({ contactId, user: { id: userId } })),
       select: {
@@ -228,6 +232,7 @@ export async function updateLocation(req, res) {
     }
 
     const tripRepo = AppDataSource.getRepository("TripSession");
+    // Guard against cross-user access by fetching with both tripId and userId.
     const trip = await getOwnedTripOrThrow({ tripId, userId, tripRepo });
 
     if (trip.status !== TRIP_SESSION_STATUS.ACTIVE) {
@@ -284,6 +289,7 @@ export async function addTime(req, res) {
     trip.expectedEndTime = new Date(new Date(trip.expectedEndTime).getTime() + extraMinutes * 60 * 1000);
     const updatedTrip = await tripRepo.save(trip);
 
+    // Reset timer so auto-SOS uses the extended expected end time.
     scheduleAutoSos(updatedTrip);
 
     return res.status(200).json({
@@ -324,6 +330,7 @@ export async function endTripSafe(req, res) {
 
     trip.status = TRIP_SESSION_STATUS.SAFE;
     const updatedTrip = await tripRepo.save(trip);
+    // SAFE completion cancels any pending escalation timer.
     clearTripTimer(updatedTrip.id);
 
     return res.status(200).json({
@@ -366,6 +373,7 @@ export async function triggerSOS(req, res) {
     const updatedTrip = await tripRepo.save(trip);
     clearTripTimer(updatedTrip.id);
 
+    // Manual SOS path uses the same escalation placeholder for now.
     await escalateToEmergencyContacts({
       tripId: updatedTrip.id,
       contactIds: updatedTrip.contactIds || [],
