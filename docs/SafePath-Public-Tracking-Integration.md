@@ -93,3 +93,13 @@ if (res.statusCode == 200) {
 - Treat `trackingId` as a share token. Do not store it in long-lived analytics logs.
 - Do not expose the raw tracking URL in public app screenshots or crash reports.
 - Frontend should avoid persisting tracking responses in local disk caches unless encrypted.
+
+## Manual Test Checklist
+
+1. Start a trip and confirm the returned `trackingUrl` opens successfully.
+2. Call `GET /api/guardian/tracking/:trackingId` and verify `success = true`.
+3. Call `GET /api/guardian/tracking?trackingId=...` and verify payload matches path-based form.
+4. Use an invalid token format and verify `400` with `Invalid trackingId format`.
+5. Use a non-existing valid-format token and verify `404` with not found message.
+6. Verify response headers include no-cache directives.
+7. Trigger `SAFE` and `SOS` states and verify `status`, `isTrackingActive`, and `isTerminal` values.
