@@ -6,3 +6,6 @@ const getSafeRoute = async (req, res) => {};
 module.exports = { getSafeRoute };
 const start = { lat: 6.8391, lon: 79.8817 };
 const end = { lat: 6.8425, lon: 79.8846 };
+const redZones = [
+  { lat: 6.8398, lon: 79.8847, radius: 50 },
+];
