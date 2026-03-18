@@ -103,6 +103,7 @@ if (res.statusCode == 200) {
 - Treat `trackingId` as a share token. Do not store it in long-lived analytics logs.
 - Do not expose the raw tracking URL in public app screenshots or crash reports.
 - Frontend should avoid persisting tracking responses in local disk caches unless encrypted.
+- Public guardian tracking endpoints are rate-limited to reduce token-enumeration abuse.
 
 ## Manual Test Checklist
 
