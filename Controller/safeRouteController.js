@@ -1,4 +1,5 @@
 const axios = require("axios");
+
 const circleToPolygon = require("../utils/circlePolygon");
 const routeIntersectsZones = require("../utils/zoneChecker");
 
@@ -13,15 +14,17 @@ const getSafeRoute = async (req, res) => {
     ];
 
     const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${start.lon},${start.lat};${end.lon},${end.lat}`;
-
+    
     const response = await axios.get(url, {
       params: {
         geometries: 'geojson',
         access_token: process.env.MAPBOX_TOKEN,
         alternatives: true,
         overview: 'full'
-      } });
-      if (!response.data.routes || response.data.routes.length === 0) {
+      }
+    });
+
+    if (!response.data.routes || response.data.routes.length === 0) {
       return res.status(404).json({ error: "No routes found" });
     }
 
@@ -38,6 +41,9 @@ const getSafeRoute = async (req, res) => {
 
     for (let i = 0; i < response.data.routes.length; i++) {
       const route = response.data.routes[i];
+
+      console.log(`\nChecking route ${i + 1}:`);
+
       if (!routeIntersectsZones(route.geometry.coordinates, redZones)) {
         console.log(`✅ Route ${i + 1} is SAFE!`);
         safeRoute = route.geometry.coordinates;
@@ -47,6 +53,7 @@ const getSafeRoute = async (req, res) => {
         console.log(`❌ Route ${i + 1} passes through danger zone`);
       }
     }
+
     if (!safeRoute && originalIsDangerous) {
 
       console.log("\n⚠️ No safe route found in initial alternatives");
@@ -61,6 +68,7 @@ const getSafeRoute = async (req, res) => {
           exclude: 'toll'
         }
       });
+
       for (let route of alternativeResponse.data.routes) {
         if (!routeIntersectsZones(route.geometry.coordinates, redZones)) {
           safeRoute = route.geometry.coordinates;
@@ -69,7 +77,9 @@ const getSafeRoute = async (req, res) => {
           break;
         }
       }
+
     }
+
     const responseData = {
       start: start,
       end: end,
@@ -87,9 +97,10 @@ const getSafeRoute = async (req, res) => {
         color: originalIsDangerous ? 'red' : 'blue'
       },
       totalRoutesChecked: response.data.routes.length
-      
     };
+
     if (safeRoute && originalIsDangerous) {
+
       responseData.safeRoute = {
         path: safeRoute.map(coord => ({ lat: coord[1], lon: coord[0] })),
         distance: safeRouteData.distance,
@@ -97,17 +108,23 @@ const getSafeRoute = async (req, res) => {
         isDangerous: false,
         color: 'blue'
       };
+
       responseData.message = "✅ Safe alternative route found!";
+
     } else if (!safeRoute && originalIsDangerous) {
+
       responseData.safeRoute = null;
       responseData.message = "⚠️ Warning: No safe alternative route available. Original route passes through danger zone.";
+
     } else {
+
       responseData.safeRoute = null;
       responseData.message = "✅ Original route is safe!";
+
     }
+
     res.json(responseData);
-    
-  
+
   } catch (err) {
 
     console.error("Error:", err.response?.data || err.message);
