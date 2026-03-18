@@ -54,6 +54,12 @@ This endpoint is public and intended for emergency contacts who open the shared 
 }
 ```
 
+## Status Meanings
+
+- `ACTIVE`: Trip is ongoing and tracking is still in progress.
+- `SAFE`: User ended the trip safely; no further escalation is expected.
+- `SOS`: Emergency escalation was triggered (manual or timeout path).
+
 ## Flutter Example
 
 ```dart
