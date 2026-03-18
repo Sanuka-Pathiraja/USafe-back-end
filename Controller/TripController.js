@@ -60,6 +60,12 @@ function sendError(res, statusCode, message) {
   return res.status(statusCode).json({ success: false, message });
 }
 
+function setNoCacheHeaders(res) {
+  res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.set("Pragma", "no-cache");
+  res.set("Expires", "0");
+}
+
 function buildTrackingUrl(trackingId) {
   const baseUrl =
     process.env.TRIP_TRACKING_BASE_URL ||
@@ -451,9 +457,7 @@ export async function getPublicTripTracking(req, res) {
     }
 
     // Public tracking should always be fresh and never cached by intermediaries.
-    res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
-    res.set("Pragma", "no-cache");
-    res.set("Expires", "0");
+    setNoCacheHeaders(res);
 
     return res.status(200).json({
       success: true,
