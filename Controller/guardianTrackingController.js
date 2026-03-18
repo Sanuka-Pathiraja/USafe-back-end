@@ -22,6 +22,7 @@ const GUARDIAN_PROGRESS_TABLE = resolveSafeTableName(
   DEFAULT_GUARDIAN_PROGRESS_TABLE
 );
 const DEFAULT_RADIUS_METERS = Number(process.env.GUARDIAN_CHECKPOINT_RADIUS_METERS || 50);
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
 
 function toNumber(value) {
   const num = Number(value);
@@ -248,6 +249,9 @@ export async function trackGuardianProgress(req, res) {
     });
   } catch (error) {
     console.error("❌ trackGuardianProgress error:", error.message);
-    return res.status(500).json({ error: "Internal Server Error", details: error.message });
+    return res.status(500).json({
+      error: "Internal Server Error",
+      ...(IS_PRODUCTION ? {} : { details: error.message }),
+    });
   }
 }

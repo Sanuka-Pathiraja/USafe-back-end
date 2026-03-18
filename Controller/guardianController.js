@@ -4,6 +4,7 @@ import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
 
 export function getSafetyScore(req, res) {
   const { lat, lng } = req.query;
@@ -51,7 +52,10 @@ export function getSafetyScore(req, res) {
     if (!settled) {
       settled = true;
       clearTimeout(timeoutHandle);
-      return res.status(500).json({ error: "Failed to start safety scoring", details: error.message });
+      return res.status(500).json({
+        error: "Failed to start safety scoring",
+        ...(IS_PRODUCTION ? {} : { details: error.message }),
+      });
     }
   });
 
@@ -73,7 +77,11 @@ export function getSafetyScore(req, res) {
       clearTimeout(timeoutHandle);
       return res.status(502).json({
         error: "Safety scoring failed",
-        details: errorString.trim() || "Invalid scorer response",
+        ...(IS_PRODUCTION
+          ? {}
+          : {
+              details: errorString.trim() || "Invalid scorer response",
+            }),
       });
     }
   });

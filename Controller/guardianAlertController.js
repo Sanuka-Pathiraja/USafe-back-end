@@ -3,6 +3,7 @@ import { sendSingleSMS } from "../CallFeat/quicksend.js";
 import AppDataSource from "../config/data-source.js";
 
 const ALLOWED_STATUSES = new Set(["arrived", "danger", "checkpoint"]);
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
 
 function normalizePhone(phone) {
   if (typeof phone !== "string") {
@@ -67,7 +68,6 @@ export async function sendCheckpointAlert(req, res) {
         if (process.env.NODE_ENV === "production") {
           return res.status(502).json({
             error: "Failed to deliver guardian alert SMS",
-            details: smsError.message,
           });
         }
 
@@ -86,6 +86,9 @@ export async function sendCheckpointAlert(req, res) {
     return res.status(200).json({ success: true, method: "SIMULATION" });
   } catch (error) {
     console.error("❌ CRITICAL ERROR:", error.message);
-    return res.status(500).json({ error: "Internal Server Error", details: error.message });
+    return res.status(500).json({
+      error: "Internal Server Error",
+      ...(IS_PRODUCTION ? {} : { details: error.message }),
+    });
   }
 }
