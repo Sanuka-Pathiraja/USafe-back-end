@@ -17,6 +17,7 @@ router.use((req, res, next) => {
 // Safety score is public (read-only calculation, rate-limited)
 router.get("/safety-score", getSafetyScore);
 // Public tracking endpoint for contact-shared SafePath links.
+router.get("/tracking", getPublicTripTracking);
 router.get("/tracking/:trackingId", getPublicTripTracking);
 
 // Protected endpoints require authentication
