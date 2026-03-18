@@ -24,6 +24,16 @@ const GUARDIAN_PROGRESS_TABLE = resolveSafeTableName(
 const DEFAULT_RADIUS_METERS = Number(process.env.GUARDIAN_CHECKPOINT_RADIUS_METERS || 50);
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
 
+function normalizeRadiusMeters(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return DEFAULT_RADIUS_METERS;
+  return Math.min(Math.max(parsed, 10), 500);
+}
+
+function isLikelyPhoneNumber(value) {
+  return /^\+?[0-9]{9,15}$/.test(String(value || "").trim());
+}
+
 function toNumber(value) {
   const num = Number(value);
   return Number.isFinite(num) ? num : null;
@@ -106,7 +116,7 @@ export async function trackGuardianProgress(req, res) {
     const routeId = toNumber(req.body.routeId ?? req.body.route_id);
     const lat = toNumber(req.body.lat);
     const lng = toNumber(req.body.lng);
-    const radiusMeters = toNumber(req.body.radiusMeters) ?? DEFAULT_RADIUS_METERS;
+    const radiusMeters = normalizeRadiusMeters(req.body.radiusMeters);
 
     if (!routeId) {
       return res.status(400).json({ error: "routeId is required" });
@@ -165,6 +175,9 @@ export async function trackGuardianProgress(req, res) {
     const parentPhone = await resolveParentPhone(userId, req.body.parentPhone);
     if (!parentPhone) {
       return res.status(400).json({ error: "parentPhone is required" });
+    }
+    if (!isLikelyPhoneNumber(parentPhone)) {
+      return res.status(400).json({ error: "Invalid parentPhone format" });
     }
 
     if (!isSmsConfigured() && process.env.NODE_ENV === "production") {
