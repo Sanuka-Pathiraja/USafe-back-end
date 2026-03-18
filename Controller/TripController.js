@@ -39,6 +39,7 @@ function isValidTrackingId(trackingId) {
 function buildPublicTrackingPayload(trip) {
   const isTrackingActive = trip.status === TRIP_SESSION_STATUS.ACTIVE;
   const isTerminal = trip.status === TRIP_SESSION_STATUS.SAFE || trip.status === TRIP_SESSION_STATUS.SOS;
+  const hasLiveLocation = trip.lastKnownLat !== null && trip.lastKnownLng !== null;
 
   return {
     trackingId: trip.trackingId,
@@ -46,9 +47,11 @@ function buildPublicTrackingPayload(trip) {
     status: trip.status,
     isTrackingActive,
     isTerminal,
+    hasLiveLocation,
     expectedEndTime: trip.expectedEndTime,
     lastKnownLat: trip.lastKnownLat,
     lastKnownLng: trip.lastKnownLng,
+    lastLocationUpdatedAt: hasLiveLocation ? trip.updatedAt : null,
     updatedAt: trip.updatedAt,
   };
 }
