@@ -37,11 +37,15 @@ function isValidTrackingId(trackingId) {
 }
 
 function buildPublicTrackingPayload(trip) {
+  const isTrackingActive = trip.status === TRIP_SESSION_STATUS.ACTIVE;
+  const isTerminal = trip.status === TRIP_SESSION_STATUS.SAFE || trip.status === TRIP_SESSION_STATUS.SOS;
+
   return {
     trackingId: trip.trackingId,
     tripName: trip.tripName,
     status: trip.status,
-    isTrackingActive: trip.status === TRIP_SESSION_STATUS.ACTIVE,
+    isTrackingActive,
+    isTerminal,
     expectedEndTime: trip.expectedEndTime,
     lastKnownLat: trip.lastKnownLat,
     lastKnownLng: trip.lastKnownLng,
