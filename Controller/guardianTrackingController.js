@@ -1,6 +1,7 @@
 import AppDataSource from "../config/data-source.js";
 import { sendSingleSMS } from "../CallFeat/quicksend.js";
 import { notifyUser } from "../utils/wsHub.js";
+import { haversineMeters } from "../utils/geo.js";
 
 const DEFAULT_GUARDIAN_ROUTES_TABLE = "guardian_routes_app";
 const DEFAULT_GUARDIAN_PROGRESS_TABLE = "guardian_route_progress";
@@ -48,21 +49,6 @@ function isValidLatLng(lat, lng) {
     lng >= -180 &&
     lng <= 180
   );
-}
-
-function haversineMeters(lat1, lng1, lat2, lng2) {
-  const toRad = (deg) => (deg * Math.PI) / 180;
-  const radius = 6371000; // meters
-  const dLat = toRad(lat2 - lat1);
-  const dLng = toRad(lng2 - lng1);
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(toRad(lat1)) *
-      Math.cos(toRad(lat2)) *
-      Math.sin(dLng / 2) *
-      Math.sin(dLng / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return radius * c;
 }
 
 function normalizePhone(phone) {
