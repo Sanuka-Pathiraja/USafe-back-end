@@ -2,7 +2,10 @@ import crypto from "crypto";
 import AppDataSource from "../config/data-source.js";
 import { sendSms } from "../services/SmsService.js";
 import { TRIP_SESSION_STATUS } from "../Model/TripSession.js";
-import { buildPublicTrackingPayload, isValidTrackingId } from "../utils/tracking.js";
+import {
+  buildPublicTrackingPayload,
+  getTrackingIdValidationError,
+} from "../utils/tracking.js";
 
 // In-process timer registry for auto-SOS. Move to a persistent queue for multi-instance deployments.
 const tripTimeouts = new Map();
@@ -568,13 +571,10 @@ export async function getPublicTripTracking(req, res) {
   try {
     // Accept both /tracking/:trackingId and /tracking?trackingId=... forms.
     const trackingId = resolveTrackingId(req);
+    const trackingIdError = getTrackingIdValidationError(trackingId);
 
-    if (!trackingId) {
-      return sendError(res, 400, "trackingId is required");
-    }
-
-    if (!isValidTrackingId(trackingId)) {
-      return sendError(res, 400, "Invalid trackingId format");
+    if (trackingIdError) {
+      return sendError(res, 400, trackingIdError);
     }
 
     const tripRepo = AppDataSource.getRepository("TripSession");
