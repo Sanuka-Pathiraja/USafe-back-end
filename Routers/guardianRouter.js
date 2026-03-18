@@ -1,4 +1,5 @@
 import { Router } from "express";
+import crypto from "crypto";
 import { getSafetyScore, getGuardianSelfCheck } from "../Controller/guardianController.js";
 import { getPublicTripTracking } from "../Controller/TripController.js";
 import { createGuardianRoute, listGuardianRoutes } from "../Controller/guardianRoutesController.js";
@@ -9,9 +10,16 @@ import { generousLimiter, trackingPublicLimiter } from "../middleware/rateLimite
 
 const router = Router();
 
+router.use((req, res, next) => {
+	const incomingRequestId = String(req.headers["x-request-id"] || "").trim();
+	req.requestId = incomingRequestId || crypto.randomUUID();
+	res.setHeader("x-request-id", req.requestId);
+	next();
+});
+
 // Lightweight request logger for SafePath debugging
 router.use((req, res, next) => {
-	console.log(`[GUARDIAN] ${req.method} ${req.originalUrl}`);
+	console.log(`[GUARDIAN][${req.requestId}] ${req.method} ${req.originalUrl}`);
 	next();
 });
 

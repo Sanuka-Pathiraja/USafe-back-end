@@ -43,7 +43,9 @@ function validateCheckpoints(checkpoints) {
 
 export async function createGuardianRoute(req, res) {
   try {
+    const requestId = req.requestId || "n/a";
     console.log("📝 Route save request:", {
+      requestId,
       userId: req.user?.id,
       name: req.body.name,
       checkpoints: req.body.checkpoints?.length,
@@ -63,6 +65,7 @@ export async function createGuardianRoute(req, res) {
       !validateCheckpoints(checkpoints)
     ) {
       console.log("❌ Validation failed:", {
+        requestId,
         name: routeName,
         checkpointsLength: checkpoints?.length,
       });
@@ -72,7 +75,7 @@ export async function createGuardianRoute(req, res) {
       });
     }
 
-    console.log(`💾 Attempting to insert route into ${GUARDIAN_ROUTES_TABLE}...`);
+    console.log(`[${requestId}] 💾 Attempting to insert route into ${GUARDIAN_ROUTES_TABLE}...`);
     const query = `
       INSERT INTO ${GUARDIAN_ROUTES_TABLE} (user_id, route_name, checkpoints, is_active)
       VALUES ($1, $2, $3::jsonb, $4)
@@ -86,11 +89,14 @@ export async function createGuardianRoute(req, res) {
       return res.status(500).json({ error: "Failed to persist guardian route" });
     }
 
-    console.log(`✅ Route saved: "${routeName}" with ${checkpoints.length} checkpoints`);
+    console.log(`[${requestId}] ✅ Route saved: "${routeName}" with ${checkpoints.length} checkpoints`);
     return res.status(201).json({ success: true, route: createdRoute });
   } catch (err) {
-    console.error("❌ Unexpected error in createGuardianRoute:", err);
-    return res.status(500).json({ error: err.message });
+    console.error("❌ Unexpected error in createGuardianRoute:", {
+      requestId: req.requestId || "n/a",
+      error: err.message,
+    });
+    return res.status(500).json({ error: err.message, requestId: req.requestId || null });
   }
 }
 

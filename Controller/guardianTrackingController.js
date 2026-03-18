@@ -94,6 +94,7 @@ async function isRouteCompleted(userId, routeId, totalCheckpoints) {
 
 export async function trackGuardianProgress(req, res) {
   try {
+    const requestId = req.requestId || "n/a";
     const userId = req.user?.id;
     if (!userId) {
       return res.status(401).json({ error: "Unauthorized" });
@@ -191,7 +192,7 @@ export async function trackGuardianProgress(req, res) {
       if (isSmsConfigured()) {
         await sendSingleSMS(parentPhone, message, senderID);
       } else {
-        console.log(`[SIMULATION] To: ${parentPhone} | Msg: ${message}`);
+        console.log(`[SIMULATION][${requestId}] To: ${parentPhone} | Msg: ${message}`);
       }
 
       notifyUser(userId, {
@@ -226,7 +227,7 @@ export async function trackGuardianProgress(req, res) {
         if (isSmsConfigured()) {
           await sendSingleSMS(parentPhone, completionMessage, senderID);
         } else {
-          console.log(`[SIMULATION] To: ${parentPhone} | Msg: ${completionMessage}`);
+          console.log(`[SIMULATION][${requestId}] To: ${parentPhone} | Msg: ${completionMessage}`);
         }
 
         notifyUser(userId, {
@@ -247,9 +248,13 @@ export async function trackGuardianProgress(req, res) {
       alerts,
     });
   } catch (error) {
-    console.error("❌ trackGuardianProgress error:", error.message);
+    console.error("❌ trackGuardianProgress error:", {
+      requestId: req.requestId || "n/a",
+      error: error.message,
+    });
     return res.status(500).json({
       error: "Internal Server Error",
+      requestId: req.requestId || null,
       ...(IS_PRODUCTION ? {} : { details: error.message }),
     });
   }

@@ -22,6 +22,7 @@ function isLikelyPhoneNumber(value) {
 
 export async function sendCheckpointAlert(req, res) {
   try {
+    const requestId = req.requestId || "n/a";
     const { routeName, checkpointName, status } = req.body;
     let parentPhone = normalizePhone(req.body.parentPhone || req.user?.phone || "");
     const normalizedStatus = typeof status === "string" ? status.trim().toLowerCase() : "";
@@ -50,7 +51,7 @@ export async function sendCheckpointAlert(req, res) {
     }
 
     console.log(
-      `🚨 ALERT REQUEST: Child '${normalizedStatus}' at ${checkpointName} (Route: ${routeName})`
+      `[${requestId}] 🚨 ALERT REQUEST: Child '${normalizedStatus}' at ${checkpointName} (Route: ${routeName})`
     );
 
     let message = "";
@@ -67,10 +68,13 @@ export async function sendCheckpointAlert(req, res) {
         const senderID = process.env.SOS_SENDER_ID || "QKSendDemo";
         const smsResponse = await sendSingleSMS(parentPhone, message, senderID);
 
-        console.log(`✅ SMS SENT to ${parentPhone}`);
+        console.log(`[${requestId}] ✅ SMS SENT to ${parentPhone}`);
         return res.status(200).json({ success: true, method: "REAL_SMS", smsResponse });
       } catch (smsError) {
-        console.error("❌ SMS API failed:", smsError.message);
+        console.error("❌ SMS API failed:", {
+          requestId,
+          error: smsError.message,
+        });
 
         if (process.env.NODE_ENV === "production") {
           return res.status(502).json({
@@ -78,7 +82,7 @@ export async function sendCheckpointAlert(req, res) {
           });
         }
 
-        console.log(`[SIMULATION LOG] To: ${parentPhone} | Msg: ${message}`);
+        console.log(`[SIMULATION LOG][${requestId}] To: ${parentPhone} | Msg: ${message}`);
         return res.status(200).json({ success: true, method: "SIMULATION_FALLBACK" });
       }
     }
@@ -89,12 +93,16 @@ export async function sendCheckpointAlert(req, res) {
       });
     }
 
-    console.log(`[SIMULATION] To: ${parentPhone} | Msg: ${message}`);
+    console.log(`[SIMULATION][${requestId}] To: ${parentPhone} | Msg: ${message}`);
     return res.status(200).json({ success: true, method: "SIMULATION" });
   } catch (error) {
-    console.error("❌ CRITICAL ERROR:", error.message);
+    console.error("❌ CRITICAL ERROR:", {
+      requestId: req.requestId || "n/a",
+      error: error.message,
+    });
     return res.status(500).json({
       error: "Internal Server Error",
+      requestId: req.requestId || null,
       ...(IS_PRODUCTION ? {} : { details: error.message }),
     });
   }
