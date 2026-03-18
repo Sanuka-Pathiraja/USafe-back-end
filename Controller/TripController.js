@@ -424,8 +424,12 @@ export async function getPublicTripTracking(req, res) {
   try {
     const trackingId = resolveTrackingId(req);
 
-    if (!trackingId || !isValidTrackingId(trackingId)) {
-      return res.status(400).json({ success: false, message: "Invalid trackingId" });
+    if (!trackingId) {
+      return res.status(400).json({ success: false, message: "trackingId is required" });
+    }
+
+    if (!isValidTrackingId(trackingId)) {
+      return res.status(400).json({ success: false, message: "Invalid trackingId format" });
     }
 
     const tripRepo = AppDataSource.getRepository("TripSession");
