@@ -35,6 +35,10 @@ const getSafeRoute = async (req, res) => {
 
     let safeRoute = null;
     let safeRouteData = null;
+
+    for (let i = 0; i < response.data.routes.length; i++) {
+      const route = response.data.routes[i];
+    }
     
   
 }
