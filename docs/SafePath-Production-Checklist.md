@@ -14,6 +14,10 @@ Critical tables:
 - `guardian_route_progress`
 - `trip_sessions`
 
+Performance-critical index:
+
+- `IDX_trip_sessions_status_expectedEndTime` on `trip_sessions(status, expectedEndTime)`
+
 ## 2. Required Environment Variables
 
 Set and verify:
