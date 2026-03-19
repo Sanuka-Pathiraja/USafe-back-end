@@ -1,3 +1,5 @@
 lala.txt
 .env
 .env.*
+node_modules
+private_sahan.key
