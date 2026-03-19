@@ -81,3 +81,9 @@ SafePath runtime probe:
 
 - Auto-SOS timers are in-process and restored on startup, but still not fully distributed-safe for multi-instance deployments.
 - Add a persistent job queue if horizontally scaling the backend.
+
+---
+
+## Full Deployment Runbook
+
+See [SafePath-Deployment-Runbook.md](SafePath-Deployment-Runbook.md) for comprehensive step-by-step deployment procedures, rollback plans, monitoring setup, and day-1 operations checklist.
