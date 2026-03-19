@@ -130,3 +130,162 @@ Scope: Backend APIs and database mappings required for frontend integration in t
 - Submit community reports as `multipart/form-data` with `images_proofs` array field.
 - Use contact CRUD routes with optimistic UI + duplicate-phone error handling.
 - Align backend environment URLs for Stripe success/cancel return to real app routes before release.
+
+## 10) SafePath Navigation Integration
+
+### Endpoint
+
+- `POST /safe-route` (recommended)
+- `GET /safe-route` (supported, but less convenient for structured arrays)
+
+### Purpose
+
+This endpoint calculates a route between a start point and an end point, checks whether that route intersects danger zones, and attempts to return a safer alternative when possible.
+
+### Required Inputs
+
+The frontend must send:
+
+- `startLat`
+- `startLon`
+- `endLat`
+- `endLon`
+- `redZones`
+
+### `redZones` Shape
+
+Each entry in `redZones` must contain:
+
+- `lat`
+- `lon`
+- `radius`
+
+`radius` is in meters.
+
+### Example Request Body
+
+```json
+{
+  "startLat": 6.8391,
+  "startLon": 79.8817,
+  "endLat": 6.8425,
+  "endLon": 79.8846,
+  "redZones": [
+    {
+      "lat": 6.8398,
+      "lon": 79.8847,
+      "radius": 50
+    }
+  ]
+}
+```
+
+### Response Shape
+
+The backend returns:
+
+- `success`
+- `start`
+- `end`
+- `redZones`
+- `originalRoute`
+- `safeRoute`
+- `totalRoutesChecked`
+- `message`
+
+### Important Response Fields
+
+#### `originalRoute`
+
+Always present when routing succeeds.
+
+Contains:
+
+- `path`
+- `distance`
+- `duration`
+- `isDangerous`
+- `color`
+
+#### `safeRoute`
+
+- contains an alternative route if one is found
+- returns `null` if no alternative is available or if the original route is already safe
+
+#### `redZones`
+
+The backend returns danger zones in a frontend-friendly structure including polygon points that can be drawn directly on a map.
+
+### Example Success Cases
+
+#### Original route is safe
+
+- `originalRoute.isDangerous = false`
+- `safeRoute = null`
+- `message = "Original route is safe"`
+
+#### Safe alternative route found
+
+- `originalRoute.isDangerous = true`
+- `safeRoute` contains route data
+- `message = "Safe alternative route found"`
+
+#### No safe alternative route found
+
+- `originalRoute.isDangerous = true`
+- `safeRoute = null`
+- `message = "No safe alternative route available. Original route passes through danger zone."`
+
+### Frontend Rendering Guidance
+
+- Always draw `originalRoute.path`
+- If `safeRoute` exists, draw it as the recommended path
+- Use `originalRoute.isDangerous` to decide whether to warn the user
+- Draw danger zones using `redZones[].polygon`
+- Use `message` directly for user-facing route status text if needed
+
+### Error Cases
+
+#### Missing Mapbox token
+
+```json
+{
+  "success": false,
+  "message": "MAPBOX_TOKEN is not configured"
+}
+```
+
+#### Missing coordinates
+
+```json
+{
+  "success": false,
+  "message": "startLat/startLon and endLat/endLon are required and must be valid coordinates"
+}
+```
+
+#### Missing danger zones
+
+```json
+{
+  "success": false,
+  "message": "redZones must contain at least one valid zone with lat, lon, and radius"
+}
+```
+
+#### No route found
+
+```json
+{
+  "success": false,
+  "error": "No routes found"
+}
+```
+
+### Environment Requirement
+
+The backend requires:
+
+- `MAPBOX_TOKEN`
+
+Without this, SafePath Navigation will not work.
