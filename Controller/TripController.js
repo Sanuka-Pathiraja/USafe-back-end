@@ -49,6 +49,15 @@ function parseContactIds(raw) {
   return [...new Set(raw.map((item) => Number(item)).filter((item) => Number.isInteger(item) && item > 0))];
 }
 
+function sanitizeTripName(name) {
+  if (!name || typeof name !== "string") return "";
+
+  return name
+    .trim()
+    .replace(/[<>"`]/g, "") // Remove HTML/injection risk characters
+    .slice(0, MAX_TRIP_NAME_LENGTH);
+}
+
 function resolveTripId(req) {
   return String(req.params?.tripId || req.body?.tripId || "").trim();
 }
@@ -353,18 +362,12 @@ export async function startTrip(req, res) {
 
     const { tripName, durationMinutes, contactIds } = req.body || {};
 
-    const cleanTripName = String(tripName || "").trim();
+    const cleanTripName = sanitizeTripName(tripName);
     const safeDurationMinutes = parsePositiveInt(durationMinutes);
     const safeContactIds = parseContactIds(contactIds);
 
     if (!cleanTripName) {
-      return res.status(400).json({ success: false, message: "tripName is required" });
-    }
-    if (cleanTripName.length > MAX_TRIP_NAME_LENGTH) {
-      return res.status(400).json({
-        success: false,
-        message: `tripName must be at most ${MAX_TRIP_NAME_LENGTH} characters`,
-      });
+      return res.status(400).json({ success: false, message: "tripName is required and must be non-empty" });
     }
 
     if (!safeDurationMinutes) {
