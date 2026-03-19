@@ -67,7 +67,11 @@ app.use("/user", Userrouter);
 app.use("/contact", contactRouter);
 app.use("/report", communityReportRouter);
 app.use("/api/guardian", guardianRouter);
-app.use("/trip", tripRouter);
+if (process.env.NODE_ENV === "production") {
+  app.use("/trip", standardLimiter, tripRouter);
+} else {
+  app.use("/trip", tripRouter);
+}
 app.use("/api/trip", tripRouter);
 
 /*======================================PayHere Routes=========================================*/

@@ -44,6 +44,7 @@ Optional but recommended:
 - Confirm auth middleware does not log raw bearer tokens.
 - Confirm public routes are rate-limited.
 - Confirm tracking routes use stricter limits than general public endpoints.
+- Confirm both `/trip/*` and `/api/trip/*` are rate-limited in production.
 
 ## 4. Functional Smoke Tests
 
