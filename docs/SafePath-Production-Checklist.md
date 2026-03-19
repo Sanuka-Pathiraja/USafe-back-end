@@ -60,6 +60,7 @@ Optional but recommended:
 - Watch logs for:
   - `TRIP_SOS_ESCALATION_DISPATCHED`
   - `AUTO_SOS_TIMER_ERROR`
+  - `TRIP_EXPIRY_SWEEP_ERROR`
   - `[AUTH] JWT_SECRET is not configured`
 - Add alerting on repeated 5xx for `/api/guardian/*` and `/trip/*`.
 

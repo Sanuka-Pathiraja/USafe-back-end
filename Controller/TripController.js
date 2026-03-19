@@ -10,6 +10,7 @@ import {
 // In-process timer registry for auto-SOS. Move to a persistent queue for multi-instance deployments.
 const tripTimeouts = new Map();
 let tripExpirySweepHandle = null;
+let tripExpirySweepInProgress = false;
 
 const RAW_TRIP_EXPIRY_SWEEP_MS = Number(process.env.TRIP_EXPIRY_SWEEP_MS || 15000);
 const TRIP_EXPIRY_SWEEP_MS = Number.isFinite(RAW_TRIP_EXPIRY_SWEEP_MS)
@@ -297,6 +298,12 @@ export function startTripExpirySweep() {
   if (tripExpirySweepHandle) return;
 
   tripExpirySweepHandle = setInterval(async () => {
+    if (tripExpirySweepInProgress) {
+      return;
+    }
+
+    tripExpirySweepInProgress = true;
+
     try {
       const processed = await processExpiredTrips();
       if (processed > 0) {
@@ -304,6 +311,8 @@ export function startTripExpirySweep() {
       }
     } catch (error) {
       console.error("TRIP_EXPIRY_SWEEP_ERROR", error);
+    } finally {
+      tripExpirySweepInProgress = false;
     }
   }, TRIP_EXPIRY_SWEEP_MS);
 
@@ -317,6 +326,7 @@ export function stopTripExpirySweep() {
 
   clearInterval(tripExpirySweepHandle);
   tripExpirySweepHandle = null;
+  tripExpirySweepInProgress = false;
 }
 
 export function shutdownTripSchedulers() {
