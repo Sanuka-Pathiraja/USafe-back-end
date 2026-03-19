@@ -90,6 +90,47 @@ function getReportCoordinates(report) {
   return extractCoordinates(report?.location);
 }
 
+async function getSafetyScoreReports(repo) {
+  try {
+    return await repo.find({
+      select: {
+        reportId: true,
+        reportDate_time: true,
+        location: true,
+        locationCoordinates: true,
+      },
+      take: 200,
+      order: { reportDate_time: "DESC" },
+    });
+  } catch (error) {
+    const message = String(error?.message || "").toLowerCase();
+    const missingCoordinatesColumn =
+      message.includes("locationcoordinates") ||
+      (message.includes("column") && message.includes("does not exist"));
+
+    if (!missingCoordinatesColumn) {
+      throw error;
+    }
+
+    console.warn("Safety score fallback: locationCoordinates column not available yet, using legacy location parsing only.");
+
+    const legacyReports = await repo.find({
+      select: {
+        reportId: true,
+        reportDate_time: true,
+        location: true,
+      },
+      take: 200,
+      order: { reportDate_time: "DESC" },
+    });
+
+    return legacyReports.map((report) => ({
+      ...report,
+      locationCoordinates: null,
+    }));
+  }
+}
+
 function toRad(value) {
   return (value * Math.PI) / 180;
 }
@@ -644,16 +685,7 @@ export const getLiveSafetyScore = async (req, res) => {
     }
 
     const repo = AppDataSource.getRepository("CommunityReport");
-    const reports = await repo.find({
-      select: {
-        reportId: true,
-        reportDate_time: true,
-        location: true,
-        locationCoordinates: true,
-      },
-      take: 200,
-      order: { reportDate_time: "DESC" },
-    });
+    const reports = await getSafetyScoreReports(repo);
 
     const radiusKm = 2;
     let nearbyCount = 0;
