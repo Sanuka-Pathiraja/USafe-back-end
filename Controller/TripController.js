@@ -11,6 +11,7 @@ import {
 const tripTimeouts = new Map();
 let tripExpirySweepHandle = null;
 let tripExpirySweepInProgress = false;
+const tripLocationUpdateTimes = new Map(); // Track last update time per trip for rate limiting
 
 const RAW_TRIP_EXPIRY_SWEEP_MS = Number(process.env.TRIP_EXPIRY_SWEEP_MS || 15000);
 const TRIP_EXPIRY_SWEEP_MS = Number.isFinite(RAW_TRIP_EXPIRY_SWEEP_MS)
@@ -26,6 +27,11 @@ const RAW_TRIP_SMS_RETRY_DELAY_MS = Number(process.env.TRIP_SMS_RETRY_DELAY_MS |
 const TRIP_SMS_RETRY_DELAY_MS = Number.isFinite(RAW_TRIP_SMS_RETRY_DELAY_MS)
   ? Math.min(Math.max(Math.trunc(RAW_TRIP_SMS_RETRY_DELAY_MS), 200), 3000)
   : 600;
+
+const RAW_TRIP_LOCATION_UPDATE_MIN_INTERVAL_MS = Number(process.env.TRIP_LOCATION_UPDATE_MIN_INTERVAL_MS || 10000);
+const TRIP_LOCATION_UPDATE_MIN_INTERVAL_MS = Number.isFinite(RAW_TRIP_LOCATION_UPDATE_MIN_INTERVAL_MS)
+  ? Math.min(Math.max(Math.trunc(RAW_TRIP_LOCATION_UPDATE_MIN_INTERVAL_MS), 1000), 60000)
+  : 10000;
 
 const MAX_TRIP_NAME_LENGTH = 120;
 const MAX_TRIP_CONTACTS = 20;
@@ -368,6 +374,7 @@ export function stopTripExpirySweep() {
 export function shutdownTripSchedulers() {
   stopTripExpirySweep();
   clearAllTripTimers();
+  tripLocationUpdateTimes.clear();
 }
 
 async function getOwnedTripOrThrow({ tripId, userId, tripRepo }) {
@@ -523,6 +530,17 @@ export async function updateLocation(req, res) {
       return res.status(400).json({ success: false, message: "lat and lng are required and must be valid coordinates" });
     }
 
+    // Rate-limit location updates per trip to prevent database spam.
+    const lastUpdateTime = tripLocationUpdateTimes.get(tripId) || 0;
+    const timeSinceLastUpdate = Date.now() - lastUpdateTime;
+
+    if (timeSinceLastUpdate < TRIP_LOCATION_UPDATE_MIN_INTERVAL_MS) {
+      return res.status(429).json({
+        success: false,
+        message: `Location updates are rate-limited. Please wait ${Math.ceil((TRIP_LOCATION_UPDATE_MIN_INTERVAL_MS - timeSinceLastUpdate) / 1000)} seconds.`,
+      });
+    }
+
     const tripRepo = AppDataSource.getRepository("TripSession");
     // Guard against cross-user access by fetching with both tripId and userId.
     const trip = await getOwnedTripOrThrow({ tripId, userId, tripRepo });
@@ -534,6 +552,7 @@ export async function updateLocation(req, res) {
     trip.lastKnownLat = lat;
     trip.lastKnownLng = lng;
     const updatedTrip = await tripRepo.save(trip);
+    tripLocationUpdateTimes.set(tripId, Date.now());
 
     return res.status(200).json({
       success: true,
@@ -642,6 +661,7 @@ export async function endTripSafe(req, res) {
     const updatedTrip = await tripRepo.save(trip);
     // SAFE completion cancels any pending escalation timer.
     clearTripTimer(updatedTrip.id);
+    tripLocationUpdateTimes.delete(updatedTrip.id);
 
     return res.status(200).json({
       success: true,
@@ -682,6 +702,7 @@ export async function triggerSOS(req, res) {
     trip.status = TRIP_SESSION_STATUS.SOS;
     const updatedTrip = await tripRepo.save(trip);
     clearTripTimer(updatedTrip.id);
+    tripLocationUpdateTimes.delete(updatedTrip.id);
 
     // Manual SOS path uses the same escalation placeholder for now.
     await escalateToEmergencyContacts({

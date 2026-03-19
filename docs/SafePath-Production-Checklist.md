@@ -38,6 +38,7 @@ Optional but recommended:
 - `TRIP_SMS_RETRY_ATTEMPTS` (default 2, bounded to 1-3)
 - `TRIP_SMS_RETRY_DELAY_MS` (default 600ms, bounded to 200-3000)
 - `REQUEST_TIMEOUT_MS` (default 30000ms, bounded to 10000-120000, production-only)
+- `TRIP_LOCATION_UPDATE_MIN_INTERVAL_MS` (default 10000ms, bounded to 1000-60000, prevents location update spam)
 
 ## 3. Security Checks
 
