@@ -516,6 +516,12 @@ export async function addTime(req, res) {
     if (!extraMinutes) {
       return res.status(400).json({ success: false, message: "extraMinutes must be a positive integer" });
     }
+    if (extraMinutes > MAX_TRIP_DURATION_MINUTES) {
+      return res.status(400).json({
+        success: false,
+        message: `extraMinutes must be <= ${MAX_TRIP_DURATION_MINUTES}`,
+      });
+    }
 
     const tripRepo = AppDataSource.getRepository("TripSession");
     const trip = await getOwnedTripOrThrow({ tripId, userId, tripRepo });
@@ -524,7 +530,19 @@ export async function addTime(req, res) {
       return res.status(409).json({ success: false, message: "Only ACTIVE trips can be extended" });
     }
 
-    trip.expectedEndTime = new Date(new Date(trip.expectedEndTime).getTime() + extraMinutes * 60 * 1000);
+    const createdAtMs = new Date(trip.createdAt).getTime();
+    const currentExpectedEndMs = new Date(trip.expectedEndTime).getTime();
+    const updatedExpectedEndMs = currentExpectedEndMs + extraMinutes * 60 * 1000;
+
+    const totalDurationMinutes = (updatedExpectedEndMs - createdAtMs) / (60 * 1000);
+    if (!Number.isFinite(totalDurationMinutes) || totalDurationMinutes > MAX_TRIP_DURATION_MINUTES) {
+      return res.status(400).json({
+        success: false,
+        message: `Trip total duration must remain <= ${MAX_TRIP_DURATION_MINUTES} minutes`,
+      });
+    }
+
+    trip.expectedEndTime = new Date(updatedExpectedEndMs);
     const updatedTrip = await tripRepo.save(trip);
 
     // Reset timer so auto-SOS uses the extended expected end time.
