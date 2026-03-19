@@ -58,6 +58,13 @@ function sanitizeTripName(name) {
     .slice(0, MAX_TRIP_NAME_LENGTH);
 }
 
+function isValidPhoneNumber(phone) {
+  if (!phone || typeof phone !== "string") return false;
+
+  const cleaned = phone.trim().replace(/[\s\-().+]/g, "");
+  return cleaned.length >= 10 && /^\d+$/.test(cleaned);
+}
+
 function resolveTripId(req) {
   return String(req.params?.tripId || req.body?.tripId || "").trim();
 }
@@ -130,6 +137,16 @@ async function sendSmsToContactsWithTrackingUrl({ contacts, tripName, durationMi
 
   const outcomes = await Promise.all(
     contacts.map(async (contact) => {
+      if (!isValidPhoneNumber(contact.phone)) {
+        return {
+          contactId: contact.contactId,
+          phone: contact.phone,
+          ok: false,
+          attempts: 0,
+          error: "Invalid phone number format",
+        };
+      }
+
       const result = await sendSmsWithRetry({
         to: contact.phone,
         body,
@@ -171,6 +188,16 @@ async function escalateToEmergencyContacts({ tripId, userId, contactIds }) {
 
   const results = await Promise.all(
     contacts.map(async (contact) => {
+      if (!isValidPhoneNumber(contact.phone)) {
+        return {
+          contactId: contact.contactId,
+          phone: contact.phone,
+          ok: false,
+          attempts: 0,
+          error: "Invalid phone number format",
+        };
+      }
+
       const result = await sendSmsWithRetry({
         to: contact.phone,
         body: message,
