@@ -7,6 +7,7 @@ Run all pending migrations before enabling traffic:
 ```bash
 npm run migration:run
 npm run safepath:preflight
+npm run safepath:smoke
 ```
 
 Critical tables:
