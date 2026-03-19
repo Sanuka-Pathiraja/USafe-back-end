@@ -1,6 +1,7 @@
 import AppDataSource from "../config/data-source.js";
 import fs from "fs";
 import { supabase } from "../config/supabase.js";
+import { triggerLowSafetyScoreNotification } from "../services/lowSafetyNotificationService.js";
 
 function parseCoordinateValue(value) {
   const n = Number(value);
@@ -804,6 +805,23 @@ export const getLiveSafetyScore = async (req, res) => {
       100 - nearbyPenalty - recentPenalty - timePenalty - batteryPenalty - servicesPenalty - trafficPenalty - densityPenalty - signalPenalty - weatherPenalty - crimePenalty
     );
     const status = deriveSafetyStatus(finalScore);
+    let lowSafetyNotification = {
+      triggered: false,
+      reason: "threshold_not_met",
+    };
+
+    try {
+      lowSafetyNotification = await triggerLowSafetyScoreNotification({
+        userId: req.user?.id,
+        score: finalScore,
+      });
+    } catch (notificationError) {
+      console.error("Low safety notification trigger failed:", notificationError.message);
+      lowSafetyNotification = {
+        triggered: false,
+        reason: "notification_error",
+      };
+    }
 
     console.log("✅ SAFETY SCORE CALCULATED: ", finalScore);
 
@@ -886,6 +904,9 @@ export const getLiveSafetyScore = async (req, res) => {
         safety_score: finalScore,
         score: finalScore,
         status,
+      },
+      notifications: {
+        lowSafetyPush: lowSafetyNotification,
       },
       result: {
         finalScore,
