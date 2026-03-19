@@ -461,6 +461,25 @@ export async function startTrip(req, res) {
       trackingUrl,
     });
 
+    // Log notification summary even if some fail; trip continues regardless.
+    const notificationsSent = notifications.filter((n) => n.ok).length;
+    const notificationsFailed = notifications.filter((n) => !n.ok).length;
+
+    if (notificationsFailed > 0) {
+      console.warn(
+        JSON.stringify({
+          event: "TRIP_START_NOTIFICATION_PARTIAL_FAILURE",
+          tripId: savedSession.id,
+          userId,
+          attempted: notifications.length,
+          sent: notificationsSent,
+          failed: notificationsFailed,
+          failedContacts: notifications.filter((n) => !n.ok).map((n) => ({ contactId: n.contactId, error: n.error })),
+          at: new Date().toISOString(),
+        })
+      );
+    }
+
     scheduleAutoSos(savedSession);
 
     return res.status(201).json({
@@ -473,6 +492,11 @@ export async function startTrip(req, res) {
         expectedEndTime: savedSession.expectedEndTime,
         trackingId: savedSession.trackingId,
         trackingUrl,
+        notificationsSummary: {
+          attempted: notifications.length,
+          sent: notificationsSent,
+          failed: notificationsFailed,
+        },
         notifications,
       },
     });
