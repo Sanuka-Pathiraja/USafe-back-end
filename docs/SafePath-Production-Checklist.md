@@ -60,13 +60,18 @@ Optional but recommended:
 
 ## 5. Monitoring
 
-- Watch logs for:
-  - `TRIP_SOS_ESCALATION_DISPATCHED`
-  - `AUTO_SOS_TIMER_ERROR`
-  - `TRIP_EXPIRY_SWEEP_ERROR`
-  - `[AUTH] JWT_SECRET is not configured`
+- Watch logs for structured trip events:
+  - `TRIP_SESSION_STARTED`: New trip created
+  - `TRIP_LOCATION_UPDATED`: Client location received
+  - `TRIP_TIME_EXTENDED`: User requested time extension
+  - `TRIP_COMPLETED_SAFE`: Trip ended safely without emergency
+  - `TRIP_SOS_TRIGGERED`: Manual or automatic SOS activation
+  - `TRIP_SOS_ESCALATION_DISPATCHED`: Emergency contacts SMS sent
+  - `AUTO_SOS_TIMER_ERROR`, `TRIP_EXPIRY_SWEEP_ERROR`: Scheduler failures
+  - `[AUTH] JWT_SECRET is not configured`: Missing JWT config
   - HTTP 408 responses (request timeout, check if `REQUEST_TIMEOUT_MS` is too aggressive)
 - Add alerting on repeated 5xx for `/api/guardian/*` and `/trip/*`.
+- Query trip event logs with `jq .event` to extract specific event types for dashboards.
 
 SafePath runtime probe:
 

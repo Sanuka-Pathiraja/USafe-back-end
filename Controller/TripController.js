@@ -138,6 +138,18 @@ async function generateUniqueTrackingId(tripRepo) {
   throw new Error("Unable to generate unique tracking ID");
 }
 
+function logTripEvent(eventName, tripId, userId, context = {}) {
+  console.log(
+    JSON.stringify({
+      event: eventName,
+      tripId,
+      userId,
+      timestamp: new Date().toISOString(),
+      ...context,
+    })
+  );
+}
+
 async function sendSmsToContactsWithTrackingUrl({ contacts, tripName, durationMinutes, trackingUrl }) {
   const body = `USafe alert: Trip '${tripName}' has started. ETA ${durationMinutes} mins. Live tracking: ${trackingUrl}`;
 
@@ -461,6 +473,13 @@ export async function startTrip(req, res) {
     const savedSession = await tripRepo.save(session);
     const trackingUrl = buildTrackingUrl(savedSession.trackingId);
 
+    logTripEvent("TRIP_SESSION_STARTED", savedSession.id, userId, {
+      tripName: savedSession.tripName,
+      durationMinutes: safeDurationMinutes,
+      contactCount: safeContactIds.length,
+      expectedEndTime: savedSession.expectedEndTime,
+    });
+
     const notifications = await sendSmsToContactsWithTrackingUrl({
       contacts,
       tripName: savedSession.tripName,
@@ -554,6 +573,11 @@ export async function updateLocation(req, res) {
     const updatedTrip = await tripRepo.save(trip);
     tripLocationUpdateTimes.set(tripId, Date.now());
 
+    logTripEvent("TRIP_LOCATION_UPDATED", tripId, userId, {
+      lat,
+      lng,
+    });
+
     return res.status(200).json({
       success: true,
       message: "Location updated",
@@ -618,6 +642,11 @@ export async function addTime(req, res) {
     trip.expectedEndTime = new Date(updatedExpectedEndMs);
     const updatedTrip = await tripRepo.save(trip);
 
+    logTripEvent("TRIP_TIME_EXTENDED", tripId, userId, {
+      extraMinutes,
+      newExpectedEndTime: updatedTrip.expectedEndTime,
+    });
+
     // Reset timer so auto-SOS uses the extended expected end time.
     scheduleAutoSos(updatedTrip);
 
@@ -663,6 +692,10 @@ export async function endTripSafe(req, res) {
     clearTripTimer(updatedTrip.id);
     tripLocationUpdateTimes.delete(updatedTrip.id);
 
+    logTripEvent("TRIP_COMPLETED_SAFE", tripId, userId, {
+      completedAt: new Date().toISOString(),
+    });
+
     return res.status(200).json({
       success: true,
       message: "Trip marked as SAFE",
@@ -703,6 +736,11 @@ export async function triggerSOS(req, res) {
     const updatedTrip = await tripRepo.save(trip);
     clearTripTimer(updatedTrip.id);
     tripLocationUpdateTimes.delete(updatedTrip.id);
+
+    logTripEvent("TRIP_SOS_TRIGGERED", tripId, userId, {
+      triggeredAt: new Date().toISOString(),
+      contactsToNotify: updatedTrip.contactIds?.length || 0,
+    });
 
     // Manual SOS path uses the same escalation placeholder for now.
     await escalateToEmergencyContacts({
