@@ -25,6 +25,10 @@ export default new EntitySchema({
       type: "varchar",
       nullable: true,
     },
+    locationCoordinates: {
+      type: "jsonb",
+      nullable: true,
+    },
   },
   relations: {
     user: {

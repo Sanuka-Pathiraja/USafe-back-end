@@ -24,6 +24,72 @@ function extractCoordinates(locationRaw) {
   return { lat, lng };
 }
 
+function normalizeCoordinatesObject(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+
+  const lat = parseCoordinateValue(raw.lat ?? raw.latitude);
+  const lng = parseCoordinateValue(raw.lng ?? raw.lon ?? raw.longitude ?? raw.long);
+
+  if (lat === null || lng === null) return null;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+
+  return { lat, lng };
+}
+
+function parseLocationCoordinatesInput(body = {}) {
+  const directObject = normalizeCoordinatesObject(body.locationCoordinates ?? body.coordinates);
+  if (directObject) return directObject;
+
+  const jsonLikeSources = [
+    body.locationCoordinates,
+    body.coordinates,
+  ];
+
+  for (const source of jsonLikeSources) {
+    if (typeof source !== "string") continue;
+    const text = source.trim();
+    if (!text) continue;
+
+    try {
+      const parsed = JSON.parse(text);
+      const normalized = normalizeCoordinatesObject(parsed);
+      if (normalized) return normalized;
+    } catch {
+      const extracted = extractCoordinates(text);
+      if (extracted) return extracted;
+    }
+  }
+
+  const flatObject = normalizeCoordinatesObject({
+    lat: body.locationLat ?? body.latitude ?? body.lat,
+    lng: body.locationLng ?? body.longitude ?? body.lng ?? body.lon,
+  });
+
+  return flatObject;
+}
+
+function hasLocationCoordinateInput(body = {}) {
+  const candidateValues = [
+    body.locationCoordinates,
+    body.coordinates,
+    body.locationLat,
+    body.locationLng,
+    body.latitude,
+    body.longitude,
+    body.lat,
+    body.lng,
+    body.lon,
+  ];
+
+  return candidateValues.some((value) => value !== undefined && value !== null && String(value).trim() !== "");
+}
+
+function getReportCoordinates(report) {
+  const direct = normalizeCoordinatesObject(report?.locationCoordinates);
+  if (direct) return direct;
+  return extractCoordinates(report?.location);
+}
+
 function toRad(value) {
   return (value * Math.PI) / 180;
 }
@@ -394,6 +460,14 @@ export const createCommunityReport = async (req, res) => {
     const repo = AppDataSource.getRepository("CommunityReport");
     const userRepo = AppDataSource.getRepository("User");
     const { reportContent, reportDate_time, location } = req.body;
+    const locationCoordinates = parseLocationCoordinatesInput(req.body);
+
+    if (hasLocationCoordinateInput(req.body) && !locationCoordinates) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid location coordinates. Send numeric lat/lng values.",
+      });
+    }
 
     const userId = req.user.id;
 
@@ -425,6 +499,7 @@ export const createCommunityReport = async (req, res) => {
       reportDate_time,
       images_proofs,
       location,
+      locationCoordinates,
       user,
     });
 
@@ -439,6 +514,7 @@ export const createCommunityReport = async (req, res) => {
         reportDate_time: report.reportDate_time,
         images_proofs: report.images_proofs,
         location: report.location,
+        locationCoordinates: report.locationCoordinates,
         userId: user.id,
       },
     });
@@ -465,6 +541,7 @@ export const getMyCommunityReports = async (req, res) => {
       reportDate_time: report.reportDate_time,
       images_proofs: report.images_proofs || [],
       location: report.location,
+      locationCoordinates: report.locationCoordinates || null,
       userId: report.user?.id,
     }));
 
@@ -505,6 +582,7 @@ export const getCommunityReportDetails = async (req, res) => {
         reportDate_time: report.reportDate_time,
         images_proofs: report.images_proofs || [],
         location: report.location,
+        locationCoordinates: report.locationCoordinates || null,
         userId: report.user?.id,
       },
     });
@@ -571,6 +649,7 @@ export const getLiveSafetyScore = async (req, res) => {
         reportId: true,
         reportDate_time: true,
         location: true,
+        locationCoordinates: true,
       },
       take: 200,
       order: { reportDate_time: "DESC" },
@@ -583,7 +662,7 @@ export const getLiveSafetyScore = async (req, res) => {
     const recentWindowMs = 24 * 60 * 60 * 1000;
 
     for (const report of reports) {
-      const point = extractCoordinates(report.location);
+      const point = getReportCoordinates(report);
       if (!point) continue;
 
       const distance = distanceKm(lat, lng, point.lat, point.lng);
