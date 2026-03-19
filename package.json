@@ -1,21 +1,40 @@
 {
-  "name": "safezone-safepath-nav",
+  "name": "safezone",
   "version": "1.0.0",
-  "private": true,
   "type": "module",
-  "description": "SafePath navigation feature module prepared for integration into feat01.",
-  "main": "Routers/safeRouteRouter.js",
+  "main": "index.js",
   "scripts": {
-    "check": "node --check Controller/safeRouteController.js && node --check Routers/safeRouteRouter.js && node --check utils/circlePolygon.js && node --check utils/distance.js && node --check utils/zoneChecker.js"
+    "start": "nodemon index.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "typeorm": "typeorm-ts-node-esm -d config/data-source.ts",
+    "migration:generate": "npm run typeorm -- migration:generate src/migrations/Name",
+    "migration:run": "npm run typeorm -- migration:run"
   },
-  "keywords": [
-    "safezone",
-    "safepath",
-    "navigation"
-  ],
+  "keywords": [],
+  "author": "",
   "license": "ISC",
+  "description": "",
   "dependencies": {
-    "axios": "^1.6.0",
-    "express": "^5.2.1"
+    "@supabase/supabase-js": "^2.93.3",
+    "@vonage/server-sdk": "^3.25.1",
+    "@vonage/voice": "^1.19.1",
+    "axios": "^1.13.2",
+    "bcrypt": "^6.0.0",
+    "body-parser": "^2.2.2",
+    "cors": "^2.8.6",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "google-auth-library": "^10.5.0",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.0.2",
+    "nodemon": "^3.1.11",
+    "pg": "^8.16.3",
+    "stripe": "^20.3.0",
+    "twilio": "^5.11.1"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.2",
+    "typeorm": "^0.3.28",
+    "typescript": "^5.9.3"
   }
 }

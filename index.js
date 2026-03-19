@@ -1,0 +1,110 @@
+// index.js
+import dotenv from "dotenv";
+dotenv.config();
+
+import express from "express";
+import cors from "cors";
+import authMiddleware from "./middleware/authMiddleware.js";
+
+import AppDataSource from "./config/data-source.js";
+import { checkNotifyBalance } from "./CallFeat/notifylkStatus.js";
+
+import callRouter from "./Routers/CallRouter.js";
+import smsRouter from "./Routers/SmsRouter.js";
+import bulkSmsRouter from "./Routers/BulkSmsRouter.js";
+import notifyLkBulkSmsRouter from "./Routers/NotifyLkBulkSmsRouter.js";
+import Userrouter from "./Routers/UserRouter.js";
+import contactRouter from "./Routers/ContactRouter.js";
+import communityReportRouter from "./Routers/CommunityReportRouter.js";
+import emergencyRouter from "./Routers/EmergencyRouter.js";
+import silentCallRouter from "./Routers/SilentCallRouter.js";
+import tripRouter from "./Routers/TripRouter.js";
+import { getLiveSafetyScore } from "./Controller/CommunityReportController.js";
+
+// Legacy unused emergency notify scenario (kept commented intentionally)
+// import notifyLkEmergencyRouter from "./Routers/NofityLkSmsRouter.js";
+
+/*======================================Stripe Routes=========================================*/
+import stripeRouter from "./Routers/stripeRouter.js";
+
+/* ===================== FEATURE TOGGLES ===================== */
+const DISABLE_CALLS = process.env.DISABLE_CALLS === "true";
+const DISABLE_SMS = process.env.DISABLE_SMS === "true";
+const DISABLE_BULK_SMS = process.env.DISABLE_BULK_SMS === "true";
+
+/* ===================== DEBUG ===================== */
+console.log("Feature Flags:");
+console.log("DISABLE_CALLS:", DISABLE_CALLS);
+console.log("DISABLE_SMS:", DISABLE_SMS);
+console.log("DISABLE_BULK_SMS:", DISABLE_BULK_SMS);
+console.log("---");
+
+/* ===================== APP ===================== */
+const app = express();
+
+app.use(cors({ origin: true, credentials: true }));
+app.use(express.json());
+app.use((req, res, next) => {
+  const baseJson = res.json.bind(res);
+  res.json = (body) => {
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    return baseJson(body);
+  };
+  next();
+});
+
+app.get("/health", (req, res) => {
+  res.json({ ok: true, message: "Backend is reachable" });
+});
+
+/* ===================== ROUTES ===================== */
+app.use("/", callRouter);
+app.use("/", smsRouter);
+app.use("/", bulkSmsRouter);
+app.use("/", notifyLkBulkSmsRouter);
+
+app.use("/user", Userrouter);
+app.use("/contact", contactRouter);
+app.use("/report", communityReportRouter);
+app.use("/api/trip", tripRouter);
+
+// Compatibility alias for clients that call /safety-score directly.
+app.post("/safety-score", authMiddleware, getLiveSafetyScore);
+app.get("/safety-score", authMiddleware, getLiveSafetyScore);
+
+app.use("/", emergencyRouter);
+app.use("/", silentCallRouter);
+// app.use("/", notifyLkEmergencyRouter); // Legacy unused emergency scenario
+
+app.use("/payment", stripeRouter);
+
+/* ===================== STRIPE WEBHOOK ===================== */
+import { handleStripeWebhook } from "./Controller/StripeWebHookHandler.js";
+
+if (process.env.NODE_ENV === "development") {
+  app.post("/webhook/stripe", express.json(), handleStripeWebhook);
+} else {
+  app.post("/webhook/stripe", express.raw({ type: "application/json" }), handleStripeWebhook);
+}
+
+/* ===================== START SERVER ===================== */
+const PORT = Number(process.env.PORT) || 5000;
+
+app.listen(PORT, async () => {
+  console.log(`Server running at http://localhost:${PORT}`);
+
+  try {
+    const status = await checkNotifyBalance();
+    console.log("Notify.lk Status:", status.active ? "Active" : "Inactive");
+    console.log("Notify.lk Balance:", status.acc_balance);
+  } catch (error) {
+    console.error("Notify.lk balance check failed:", error.message);
+  }
+
+  try {
+    await AppDataSource.initialize();
+    console.log("Data Source initialized! Connected to Supabase.");
+  } catch (err) {
+    console.error("Error during Data Source initialization:", err);
+  }
+});
