@@ -35,6 +35,8 @@ Optional but recommended:
 
 - `SAFETY_SCORE_TIMEOUT_MS` (default 8000, bounded to 1000-30000)
 - `GUARDIAN_CHECKPOINT_RADIUS_METERS`
+- `TRIP_SMS_RETRY_ATTEMPTS` (default 2, bounded to 1-3)
+- `TRIP_SMS_RETRY_DELAY_MS` (default 600ms, bounded to 200-3000)
 
 ## 3. Security Checks
 

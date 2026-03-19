@@ -16,6 +16,16 @@ const TRIP_EXPIRY_SWEEP_MS = Number.isFinite(RAW_TRIP_EXPIRY_SWEEP_MS)
   ? Math.min(Math.max(RAW_TRIP_EXPIRY_SWEEP_MS, 5000), 60000)
   : 15000;
 
+const RAW_TRIP_SMS_RETRY_ATTEMPTS = Number(process.env.TRIP_SMS_RETRY_ATTEMPTS || 2);
+const TRIP_SMS_RETRY_ATTEMPTS = Number.isFinite(RAW_TRIP_SMS_RETRY_ATTEMPTS)
+  ? Math.min(Math.max(Math.trunc(RAW_TRIP_SMS_RETRY_ATTEMPTS), 1), 3)
+  : 2;
+
+const RAW_TRIP_SMS_RETRY_DELAY_MS = Number(process.env.TRIP_SMS_RETRY_DELAY_MS || 600);
+const TRIP_SMS_RETRY_DELAY_MS = Number.isFinite(RAW_TRIP_SMS_RETRY_DELAY_MS)
+  ? Math.min(Math.max(Math.trunc(RAW_TRIP_SMS_RETRY_DELAY_MS), 200), 3000)
+  : 600;
+
 const MAX_TRIP_NAME_LENGTH = 120;
 const MAX_TRIP_CONTACTS = 20;
 const MAX_TRIP_DURATION_MINUTES = 24 * 60;
@@ -67,6 +77,34 @@ function buildTrackingUrl(trackingId) {
   return `${String(baseUrl).replace(/\/+$/, "")}/${encodeURIComponent(trackingId)}`;
 }
 
+function delay(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function sendSmsWithRetry({ to, body }) {
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= TRIP_SMS_RETRY_ATTEMPTS; attempt += 1) {
+    try {
+      await sendSms({ to, body });
+      return { ok: true, attempts: attempt, error: null };
+    } catch (error) {
+      lastError = error;
+      if (attempt < TRIP_SMS_RETRY_ATTEMPTS) {
+        await delay(TRIP_SMS_RETRY_DELAY_MS * attempt);
+      }
+    }
+  }
+
+  return {
+    ok: false,
+    attempts: TRIP_SMS_RETRY_ATTEMPTS,
+    error: String(lastError?.message || lastError || "Unknown SMS failure"),
+  };
+}
+
 async function generateUniqueTrackingId(tripRepo) {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const candidate = crypto.randomBytes(6).toString("base64url");
@@ -80,21 +118,24 @@ async function generateUniqueTrackingId(tripRepo) {
 async function sendSmsToContactsWithTrackingUrl({ contacts, tripName, durationMinutes, trackingUrl }) {
   const body = `USafe alert: Trip '${tripName}' has started. ETA ${durationMinutes} mins. Live tracking: ${trackingUrl}`;
 
-  const results = await Promise.allSettled(
-    contacts.map((contact) =>
-      sendSms({
+  const outcomes = await Promise.all(
+    contacts.map(async (contact) => {
+      const result = await sendSmsWithRetry({
         to: contact.phone,
         body,
-      })
-    )
+      });
+
+      return {
+        contactId: contact.contactId,
+        phone: contact.phone,
+        ok: result.ok,
+        attempts: result.attempts,
+        error: result.error,
+      };
+    })
   );
 
-  return results.map((result, index) => ({
-    contactId: contacts[index].contactId,
-    phone: contacts[index].phone,
-    ok: result.status === "fulfilled",
-    error: result.status === "rejected" ? String(result.reason?.message || result.reason) : null,
-  }));
+  return outcomes;
 }
 
 async function escalateToEmergencyContacts({ tripId, userId, contactIds }) {
@@ -118,21 +159,22 @@ async function escalateToEmergencyContacts({ tripId, userId, contactIds }) {
   const message =
     "USafe SOS: Emergency detected during active trip. Please check immediately.";
 
-  const outcomes = await Promise.allSettled(
-    contacts.map((contact) =>
-      sendSms({
+  const results = await Promise.all(
+    contacts.map(async (contact) => {
+      const result = await sendSmsWithRetry({
         to: contact.phone,
         body: message,
-      })
-    )
-  );
+      });
 
-  const results = outcomes.map((outcome, index) => ({
-    contactId: contacts[index]?.contactId,
-    phone: contacts[index]?.phone,
-    ok: outcome.status === "fulfilled",
-    error: outcome.status === "rejected" ? String(outcome.reason?.message || outcome.reason) : null,
-  }));
+      return {
+        contactId: contact.contactId,
+        phone: contact.phone,
+        ok: result.ok,
+        attempts: result.attempts,
+        error: result.error,
+      };
+    })
+  );
 
   const sent = results.filter((item) => item.ok).length;
   const failed = results.length - sent;
