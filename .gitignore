@@ -1,4 +1,7 @@
-node_modules/
 .env
-.env.*
+
+node_modules
+
+# Ignore individual KWS keyword datasets
+ML/KWS/data/
 private_sahan.key
