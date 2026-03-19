@@ -13,6 +13,8 @@ The location payload is now split into two parts:
 - `location`: exact human-readable address or selected place text
 - `locationCoordinates`: exact coordinates for that selected place
 
+`locationCoordinates` is mandatory for new report creation.
+
 ## Endpoints
 
 ### 1) Create Report
@@ -25,7 +27,7 @@ Form fields:
 - `reportContent` (string, required)
 - `reportDate_time` (string, optional, ISO format recommended)
 - `location` (string, optional)
-- `locationCoordinates` (JSON string, optional)
+- `locationCoordinates` (JSON string, required)
 - `images_proofs` (file[], optional, multiple supported)
 
 Recommended payload shape from frontend:
@@ -42,7 +44,7 @@ Example form values:
 
 Backend compatibility:
 
-- preferred: `locationCoordinates` as JSON string
+- required: `locationCoordinates` as JSON string
 - also supported: `latitude` + `longitude`
 - also supported: `locationLat` + `locationLng`
 
@@ -117,6 +119,7 @@ Success response (`200`):
 ```
 
 Error responses:
+- `400` missing `locationCoordinates`
 - `400` invalid `locationCoordinates` payload
 - `400` invalid `reportId`
 - `401` missing/invalid JWT
@@ -146,8 +149,8 @@ When the user picks a location from autocomplete, search, or a map selector, the
 - Coordinates column value:
   store the selected place coordinates in `locationCoordinates`
 
-Do not send only the address if exact coordinates are available.  
-The backend now supports storing them separately, and the safety logic works better when true coordinates are stored directly.
+Do not send only the address.  
+For new community reports, coordinates are required and the backend will reject the request if `locationCoordinates` is missing or invalid.
 
 ## Example Frontend Submit Logic
 

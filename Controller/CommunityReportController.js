@@ -503,6 +503,13 @@ export const createCommunityReport = async (req, res) => {
     const { reportContent, reportDate_time, location } = req.body;
     const locationCoordinates = parseLocationCoordinatesInput(req.body);
 
+    if (!locationCoordinates) {
+      return res.status(400).json({
+        success: false,
+        error: "locationCoordinates are required. Send numeric lat/lng values for the selected location.",
+      });
+    }
+
     if (hasLocationCoordinateInput(req.body) && !locationCoordinates) {
       return res.status(400).json({
         success: false,
