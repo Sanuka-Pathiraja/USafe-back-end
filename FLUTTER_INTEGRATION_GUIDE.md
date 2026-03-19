@@ -198,6 +198,22 @@ Body: {
 ```dart
 GET /api/guardian/safety-score?lat=6.9271&lng=79.8612
 // No auth header needed
+
+// Example response (enriched fields)
+{
+  "score": 63,
+  "latitude": 6.9271,
+  "longitude": 79.8612,
+  "status": "success",
+  "closestHospitalKm": 0.44,
+  "closestPoliceStationKm": null,
+  "populationDensityPerKm2": 12468,
+  "trafficLevel": "Low",
+  "timeOfDay": "Night"
+}
+
+// Note: hospital/police may occasionally be null due to upstream API limits.
+// Frontend should render fallback text like "N/A" or "Calculating...".
 ```
 
 ### 3. Save Guardian Route (Protected)

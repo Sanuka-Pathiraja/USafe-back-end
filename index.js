@@ -32,6 +32,7 @@ import {
   shutdownTripSchedulers,
   startTripExpirySweep,
 } from "./Controller/TripController.js";
+import { getSafetyScore } from "./Controller/guardianController.js";
 
 /* ===================== FEATURE TOGGLES ===================== */
 const DISABLE_CALLS = process.env.DISABLE_CALLS === "true";
@@ -74,6 +75,10 @@ if (process.env.NODE_ENV === "production") {
   app.use("/trip", tripRouter);
 }
 app.use("/api/trip", tripRouter);
+
+// Compatibility routes for older clients that call safety-score without the guardian prefix.
+app.get("/safety-score", generousLimiter, getSafetyScore);
+app.post("/safety-score", generousLimiter, getSafetyScore);
 
 /*======================================PayHere Routes=========================================*/
 // import payHereRouter from "./Routers/PayHereRouter.js";

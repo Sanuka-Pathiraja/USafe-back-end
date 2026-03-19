@@ -25,6 +25,7 @@ router.use((req, res, next) => {
 
 // Public read-only endpoint for coordinate-based safety scoring.
 router.get("/safety-score", generousLimiter, getSafetyScore);
+router.post("/safety-score", generousLimiter, getSafetyScore);
 // Public tracking endpoints for contact-shared SafePath links.
 // Supports both /tracking/:trackingId and /tracking?trackingId=... forms.
 router.get("/tracking", trackingPublicLimiter, getPublicTripTracking);

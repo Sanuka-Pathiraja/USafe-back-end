@@ -57,12 +57,41 @@ export async function getGuardianSelfCheck(req, res) {
 }
 
 export function getSafetyScore(req, res) {
-  const { lat, lng } = req.query;
+  const coordinateSources = [
+    req.query || {},
+    req.body || {},
+    req.body?.location || {},
+    req.body?.coords || {},
+  ];
+
+  const getCoordinate = (keys) => {
+    for (const source of coordinateSources) {
+      for (const key of keys) {
+        if (source?.[key] !== undefined && source?.[key] !== null && source?.[key] !== "") {
+          return source[key];
+        }
+      }
+    }
+    return undefined;
+  };
+
+  const lat = getCoordinate(["lat", "latitude"]);
+  const lng = getCoordinate(["lng", "lon", "long", "longitude"]);
   const parsedLat = Number(lat);
   const parsedLng = Number(lng);
 
   if (!Number.isFinite(parsedLat) || !Number.isFinite(parsedLng)) {
-    return res.status(400).json({ error: "Missing lat/lng" });
+    return res.status(400).json({
+      error: "Missing lat/lng",
+      expected: {
+        query: ["lat", "lng"],
+        bodyExamples: [
+          { lat: 6.9271, lng: 79.8612 },
+          { latitude: 6.9271, longitude: 79.8612 },
+          { location: { lat: 6.9271, lng: 79.8612 } },
+        ],
+      },
+    });
   }
 
   if (parsedLat < -90 || parsedLat > 90 || parsedLng < -180 || parsedLng > 180) {
@@ -81,10 +110,10 @@ export function getSafetyScore(req, res) {
   let errorString = "";
   let settled = false;
 
-  const rawTimeoutMs = Number(process.env.SAFETY_SCORE_TIMEOUT_MS || 8000);
+  const rawTimeoutMs = Number(process.env.SAFETY_SCORE_TIMEOUT_MS || 25000);
   const timeoutMs = Number.isFinite(rawTimeoutMs)
     ? Math.min(Math.max(rawTimeoutMs, 1000), 30000)
-    : 8000;
+    : 25000;
   const timeoutHandle = setTimeout(() => {
     if (!settled) {
       pythonProcess.kill("SIGTERM");
