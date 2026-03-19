@@ -25,22 +25,22 @@ const GUARDIAN_PROGRESS_TABLE = resolveSafeTableName(
 const DEFAULT_RADIUS_METERS = Number(process.env.GUARDIAN_CHECKPOINT_RADIUS_METERS || 50);
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
 
-function normalizeRadiusMeters(value) {
+export function normalizeRadiusMeters(value) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return DEFAULT_RADIUS_METERS;
   return Math.min(Math.max(parsed, 10), 500);
 }
 
-function isLikelyPhoneNumber(value) {
+export function isLikelyPhoneNumber(value) {
   return /^\+?[0-9]{9,15}$/.test(String(value || "").trim());
 }
 
-function toNumber(value) {
+export function toNumber(value) {
   const num = Number(value);
   return Number.isFinite(num) ? num : null;
 }
 
-function isValidLatLng(lat, lng) {
+export function isValidLatLng(lat, lng) {
   return (
     Number.isFinite(lat) &&
     Number.isFinite(lng) &&
@@ -160,19 +160,21 @@ export async function trackGuardianProgress(req, res) {
     }
 
     const parentPhone = await resolveParentPhone(userId, req.body.parentPhone);
-    if (!parentPhone) {
-      return res.status(400).json({ error: "parentPhone is required" });
-    }
-    if (!isLikelyPhoneNumber(parentPhone)) {
-      return res.status(400).json({ error: "Invalid parentPhone format" });
-    }
+    const hasValidParentPhone = isLikelyPhoneNumber(parentPhone);
+    const smsConfigured = isSmsConfigured();
+    const canSendSms = hasValidParentPhone && smsConfigured;
+    let smsSkipReason = null;
 
-    if (!isSmsConfigured() && process.env.NODE_ENV === "production") {
-      return res.status(503).json({ error: "SMS provider is not configured" });
+    if (!hasValidParentPhone) {
+      smsSkipReason = "parentPhone is missing or invalid";
+    } else if (!smsConfigured) {
+      smsSkipReason = "SMS provider is not configured";
     }
 
     const senderID = process.env.SOS_SENDER_ID || "QKSendDemo";
     const alerts = [];
+    let smsSent = 0;
+    let smsSkipped = 0;
 
     for (const match of matches) {
       const insertResult = await AppDataSource.query(
@@ -189,10 +191,14 @@ export async function trackGuardianProgress(req, res) {
       }
 
       const message = `SafePath: Child has reached ${match.name}.`;
-      if (isSmsConfigured()) {
+      if (canSendSms) {
         await sendSingleSMS(parentPhone, message, senderID);
+        smsSent += 1;
       } else {
-        console.log(`[SIMULATION][${requestId}] To: ${parentPhone} | Msg: ${message}`);
+        smsSkipped += 1;
+        console.log(
+          `[SIMULATION][${requestId}] SMS skipped (${smsSkipReason || "unknown reason"}) | Msg: ${message}`
+        );
       }
 
       notifyUser(userId, {
@@ -224,10 +230,14 @@ export async function trackGuardianProgress(req, res) {
 
       if (completionInsert?.[0]) {
         const completionMessage = `SafePath: Route "${route.route_name}" completed.`;
-        if (isSmsConfigured()) {
+        if (canSendSms) {
           await sendSingleSMS(parentPhone, completionMessage, senderID);
+          smsSent += 1;
         } else {
-          console.log(`[SIMULATION][${requestId}] To: ${parentPhone} | Msg: ${completionMessage}`);
+          smsSkipped += 1;
+          console.log(
+            `[SIMULATION][${requestId}] Completion SMS skipped (${smsSkipReason || "unknown reason"}) | Msg: ${completionMessage}`
+          );
         }
 
         notifyUser(userId, {
@@ -245,6 +255,12 @@ export async function trackGuardianProgress(req, res) {
       routeName: route.route_name,
       matched: matches.length,
       alertsSent: alerts.length,
+      smsSummary: {
+        enabled: canSendSms,
+        sent: smsSent,
+        skipped: smsSkipped,
+        ...(smsSkipReason ? { reason: smsSkipReason } : {}),
+      },
       alerts,
     });
   } catch (error) {

@@ -223,6 +223,12 @@ Send checkpoint alert to parent/guardian.
 
 ### GET /api/guardian/safety-score
 
+### POST /api/guardian/safety-score
+
+### GET /safety-score
+
+### POST /safety-score
+
 Get real-time safety score for a location. **Public endpoint** (no authentication required).
 
 **Query Params:**
@@ -230,18 +236,43 @@ Get real-time safety score for a location. **Public endpoint** (no authenticatio
 - `lat`: Latitude (required)
 - `lng`: Longitude (required)
 
+**Body (POST alternative):**
+
+```json
+{
+  "location": {
+    "lat": 6.9271,
+    "lng": 79.8612
+  }
+}
+```
+
+The API also accepts alternate keys such as `latitude`/`longitude` and nested `coords` objects.
+
 **Example:** `/api/guardian/safety-score?lat=6.9271&lng=79.8612`
 
 **Response:**
 
 ```json
 {
-  "score": 75,
+  "score": 63,
   "latitude": 6.9271,
   "longitude": 79.8612,
-  "status": "success"
+  "status": "success",
+  "generatedAt": "2026-03-19T15:37:28Z",
+  "closestHospitalKm": 0.44,
+  "closestPoliceStationKm": null,
+  "populationDensityPerKm2": 12468,
+  "trafficLevel": "Low",
+  "timeOfDay": "Night"
 }
 ```
+
+Notes:
+
+- `closestHospitalKm` and `closestPoliceStationKm` may be `null` when external map providers are temporarily unavailable.
+- Response includes both camelCase and snake_case aliases for compatibility with existing clients.
+- Responses are cached briefly in-memory by rounded coordinates to improve latency and stability.
 
 ---
 
@@ -413,6 +444,7 @@ PORT=5000
 NODE_ENV=production
 PYTHON_EXECUTABLE=python3
 SAFETY_SCORE_TIMEOUT_MS=8000
+SAFETY_SCORE_CACHE_TTL_MS=60000
 DB_CONNECTION_TIMEOUT_MS=10000
 ```
 
