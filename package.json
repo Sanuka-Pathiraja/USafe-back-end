@@ -1,32 +1,21 @@
 {
-  "name": "safezone",
+  "name": "safezone-safepath-nav",
   "version": "1.0.0",
+  "private": true,
   "type": "module",
-  "description": "",
-  "main": "index.js",
-  "directories": {
-    "doc": "docs"
-  },
+  "description": "SafePath navigation feature module prepared for integration into feat01.",
+  "main": "Routers/safeRouteRouter.js",
   "scripts": {
-    "start": "node server.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "check": "node --check Controller/safeRouteController.js && node --check Routers/safeRouteRouter.js && node --check utils/circlePolygon.js && node --check utils/distance.js && node --check utils/zoneChecker.js"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/Sanuka-Pathiraja/USafe-back-end.git"
-  },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "safezone",
+    "safepath",
+    "navigation"
+  ],
   "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/Sanuka-Pathiraja/USafe-back-end/issues"
-  },
-  "homepage": "https://github.com/Sanuka-Pathiraja/USafe-back-end#readme",
   "dependencies": {
-    "@turf/circle": "^7.3.4",
     "axios": "^1.6.0",
-    "cors": "^2.8.5",
-    "dotenv": "^16.1.4",
     "express": "^5.2.1"
   }
 }
