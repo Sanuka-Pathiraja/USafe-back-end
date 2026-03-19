@@ -25,7 +25,7 @@ import communityReportRouter from "./Routers/CommunityReportRouter.js";
 import guardianRouter from "./Routers/guardianRouter.js";
 import tripRouter from "./Routers/TripRouter.js";
 import healthRouter from "./Routers/healthRouter.js";
-import { standardLimiter, generousLimiter } from "./middleware/rateLimiter.js";
+import { standardLimiter, generousLimiter, requestTimeout } from "./middleware/rateLimiter.js";
 import { initializeWebSocket } from "./utils/wsHub.js";
 import {
   bootstrapTripTimers,
@@ -53,8 +53,9 @@ let isShuttingDown = false;
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
-// Apply rate limiting based on environment
+// Apply request timeout and rate limiting based on environment
 if (process.env.NODE_ENV === "production") {
+  app.use(requestTimeout);
   app.use("/api", standardLimiter);
   app.use("/health", generousLimiter);
 }

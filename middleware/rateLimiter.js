@@ -59,3 +59,38 @@ export const communicationLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
+
+/**
+ * Request timeout middleware to prevent hanging connections.
+ * Configurable via REQUEST_TIMEOUT_MS (default 30000, bounded to 10000-120000).
+ */
+function createRequestTimeout() {
+  const rawMs = Number(process.env.REQUEST_TIMEOUT_MS || 30000);
+  const timeoutMs = Number.isFinite(rawMs)
+    ? Math.min(Math.max(Math.trunc(rawMs), 10000), 120000)
+    : 30000;
+
+  return (req, res, next) => {
+    const timeoutHandle = setTimeout(() => {
+      if (!res.headersSent) {
+        res.status(408).json({
+          success: false,
+          message: "Request timeout",
+        });
+      }
+      req.socket.destroy();
+    }, timeoutMs);
+
+    res.on("finish", () => {
+      clearTimeout(timeoutHandle);
+    });
+
+    res.on("close", () => {
+      clearTimeout(timeoutHandle);
+    });
+
+    next();
+  };
+}
+
+export const requestTimeout = createRequestTimeout();

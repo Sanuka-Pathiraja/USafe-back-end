@@ -37,6 +37,7 @@ Optional but recommended:
 - `GUARDIAN_CHECKPOINT_RADIUS_METERS`
 - `TRIP_SMS_RETRY_ATTEMPTS` (default 2, bounded to 1-3)
 - `TRIP_SMS_RETRY_DELAY_MS` (default 600ms, bounded to 200-3000)
+- `REQUEST_TIMEOUT_MS` (default 30000ms, bounded to 10000-120000, production-only)
 
 ## 3. Security Checks
 
@@ -63,6 +64,7 @@ Optional but recommended:
   - `AUTO_SOS_TIMER_ERROR`
   - `TRIP_EXPIRY_SWEEP_ERROR`
   - `[AUTH] JWT_SECRET is not configured`
+  - HTTP 408 responses (request timeout, check if `REQUEST_TIMEOUT_MS` is too aggressive)
 - Add alerting on repeated 5xx for `/api/guardian/*` and `/trip/*`.
 
 SafePath runtime probe:
