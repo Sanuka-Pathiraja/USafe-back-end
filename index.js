@@ -27,7 +27,11 @@ import tripRouter from "./Routers/TripRouter.js";
 import healthRouter from "./Routers/healthRouter.js";
 import { standardLimiter, generousLimiter } from "./middleware/rateLimiter.js";
 import { initializeWebSocket } from "./utils/wsHub.js";
-import { bootstrapTripTimers, startTripExpirySweep } from "./Controller/TripController.js";
+import {
+  bootstrapTripTimers,
+  shutdownTripSchedulers,
+  startTripExpirySweep,
+} from "./Controller/TripController.js";
 
 /* ===================== FEATURE TOGGLES ===================== */
 const DISABLE_CALLS = process.env.DISABLE_CALLS === "true";
@@ -44,6 +48,7 @@ console.log("---");
 /* ===================== APP ===================== */
 const app = express();
 const server = http.createServer(app);
+let isShuttingDown = false;
 
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
@@ -81,6 +86,47 @@ if (process.env.NODE_ENV === "development") {
   app.post("/webhook/stripe", express.raw({ type: "application/json" }), handleStripeWebhook);
 }
 
+  function registerGracefulShutdown() {
+    const shutdown = async (signal) => {
+      if (isShuttingDown) return;
+      isShuttingDown = true;
+
+      console.log(`[SHUTDOWN] Received ${signal}, closing server resources...`);
+
+      shutdownTripSchedulers();
+
+      server.close(async (serverCloseError) => {
+        if (serverCloseError) {
+          console.error("[SHUTDOWN] HTTP server close error:", serverCloseError);
+        }
+
+        try {
+          if (AppDataSource.isInitialized) {
+            await AppDataSource.destroy();
+            console.log("[SHUTDOWN] Data source closed");
+          }
+        } catch (dbError) {
+          console.error("[SHUTDOWN] Data source close error:", dbError);
+        } finally {
+          process.exit(serverCloseError ? 1 : 0);
+        }
+      });
+
+      setTimeout(() => {
+        console.error("[SHUTDOWN] Force exit after timeout");
+        process.exit(1);
+      }, 10000).unref();
+    };
+
+    process.on("SIGINT", () => {
+      shutdown("SIGINT");
+    });
+
+    process.on("SIGTERM", () => {
+      shutdown("SIGTERM");
+    });
+  }
+
 /* ===================== START SERVER ===================== */
 async function startServer() {
   try {
@@ -95,6 +141,7 @@ async function startServer() {
 
   const port = Number(process.env.PORT || 5000);
   initializeWebSocket(server);
+  registerGracefulShutdown();
   server.listen(port, async () => {
     console.log(`🚀 Server running at http://localhost:${port}`);
 

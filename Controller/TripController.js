@@ -207,6 +207,13 @@ function clearTripTimer(tripId) {
   tripTimeouts.delete(tripId);
 }
 
+export function clearAllTripTimers() {
+  for (const timeoutHandle of tripTimeouts.values()) {
+    clearTimeout(timeoutHandle);
+  }
+  tripTimeouts.clear();
+}
+
 async function claimTripForSosById(tripId) {
   const rows = await AppDataSource.query(
     `
@@ -303,6 +310,18 @@ export function startTripExpirySweep() {
   if (typeof tripExpirySweepHandle.unref === "function") {
     tripExpirySweepHandle.unref();
   }
+}
+
+export function stopTripExpirySweep() {
+  if (!tripExpirySweepHandle) return;
+
+  clearInterval(tripExpirySweepHandle);
+  tripExpirySweepHandle = null;
+}
+
+export function shutdownTripSchedulers() {
+  stopTripExpirySweep();
+  clearAllTripTimers();
 }
 
 async function getOwnedTripOrThrow({ tripId, userId, tripRepo }) {

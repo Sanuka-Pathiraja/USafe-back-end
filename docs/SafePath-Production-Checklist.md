@@ -53,6 +53,7 @@ Optional but recommended:
 4. Start trip session and verify tracking URL response.
 5. Trigger SOS and verify emergency contacts receive SMS.
 6. Restart server and confirm active trip timers are restored.
+7. Send SIGTERM (or stop container) and confirm graceful shutdown logs show scheduler cleanup and DB close.
 
 ## 5. Monitoring
 
