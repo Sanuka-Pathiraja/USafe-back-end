@@ -34,6 +34,8 @@ export default async function makeOutboundCall(toOverride, opts = {}) {
     ncco: [{ action: "talk", language: "en-US", style: 0, premium: false, text }],
   };
 
+  console.log("Vonage Voice Text:", text);
+
   // Only attach webhook if PUBLIC_BASE_URL exists
   if (publicBaseUrl && sessionId && contactIndex) {
     payload.event_url = [
