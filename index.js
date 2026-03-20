@@ -46,6 +46,7 @@ const app = express();
 
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
+app.use("/uploads", express.static("uploads"));
 app.use((req, res, next) => {
   const baseJson = res.json.bind(res);
   res.json = (body) => {

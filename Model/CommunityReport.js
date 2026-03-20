@@ -21,6 +21,11 @@ export default new EntitySchema({
       array: true,
       nullable: true,
     },
+    issueTypes: {
+      type: "varchar",
+      array: true,
+      nullable: true,
+    },
     location: {
       type: "varchar",
       nullable: true,
@@ -38,6 +43,18 @@ export default new EntitySchema({
         name: "userId", // FK column name
       },
       onDelete: "CASCADE",
+    },
+    likes: {
+      type: "one-to-many",
+      target: "CommunityReportLike",
+      inverseSide: "report",
+      cascade: true,
+    },
+    comments: {
+      type: "one-to-many",
+      target: "CommunityReportComment",
+      inverseSide: "report",
+      cascade: true,
     },
   },
 });

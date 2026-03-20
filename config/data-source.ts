@@ -14,6 +14,8 @@ const AppDataSource = new DataSource({
     "./Model/User.js",
     "./Model/Contact.js",
     "./Model/CommunityReport.js",
+    "./Model/CommunityReportLike.js",
+    "./Model/CommunityReportComment.js",
     "./Model/Payment.js",
     "./Model/SmsLog.js",
     "./Model/TripSession.js",
