@@ -5,6 +5,11 @@ import {
   getCommunityReportDetails,
   getLiveSafetyScore,
   deleteCommunityReport,
+  getCommunityFeed,
+  addCommunityReportLike,
+  removeCommunityReportLike,
+  getCommunityReportComments,
+  createCommunityReportComment,
 } from "../Controller/CommunityReportController.js";
 import multer from "multer";
 // import { authMiddleware } from "../middleware/authMiddleware.js";
@@ -22,9 +27,14 @@ const upload = multer({ storage });
 
 // Use upload.array if multiple images
 communityReportRouter.post("/add", authMiddleware, upload.array("images_proofs"), createCommunityReport);
+communityReportRouter.get("/feed", authMiddleware, getCommunityFeed);
 communityReportRouter.get("/my-reports", authMiddleware, getMyCommunityReports);
 communityReportRouter.post("/live-safety-score", authMiddleware, getLiveSafetyScore);
 communityReportRouter.get("/live-safety-score", authMiddleware, getLiveSafetyScore);
+communityReportRouter.post("/:reportId/like", authMiddleware, addCommunityReportLike);
+communityReportRouter.delete("/:reportId/like", authMiddleware, removeCommunityReportLike);
+communityReportRouter.get("/:reportId/comments", authMiddleware, getCommunityReportComments);
+communityReportRouter.post("/:reportId/comments", authMiddleware, createCommunityReportComment);
 communityReportRouter.get("/:reportId", authMiddleware, getCommunityReportDetails);
 communityReportRouter.delete("/:reportId", authMiddleware, deleteCommunityReport);
 
