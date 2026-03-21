@@ -25,15 +25,15 @@ export async function sendCheckpointAlert(req, res) {
   try {
     const requestId = req.requestId || "n/a";
     const userId = req.user?.id;
-    const { tripId, message } = req.body || {};
+    const { tripId, message: alertMessage } = req.body || {};
 
     // New Guardian flow: frontend sends tripId + message per checkpoint.
-    if (tripId || message) {
+    if (tripId || alertMessage) {
       if (!userId) {
         return res.status(401).json({ error: "Unauthorized" });
       }
 
-      if (!tripId || !message) {
+      if (!tripId || !alertMessage) {
         return res.status(400).json({ error: "tripId and message are required" });
       }
 
@@ -75,7 +75,7 @@ export async function sendCheckpointAlert(req, res) {
         }
 
         try {
-          const smsResult = await sendSms({ to: phone, body: String(message) });
+          const smsResult = await sendSms({ to: phone, body: String(alertMessage) });
           results.push({
             contactId: contact.contactId,
             phone,
