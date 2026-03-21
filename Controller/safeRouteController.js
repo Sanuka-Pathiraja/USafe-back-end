@@ -31,8 +31,8 @@ function computeAvoidanceWaypoint(zone, start, end) {
 const getSafeRoute = async (req, res) => {
   try {
 
-    const start = { lat:	6.9269, lon: 		79.8658};
-    const end   = { lat: 		6.9279, lon: 		79.8631 };
+    const start = { lat: 6.9221, lon: 	79.8668};
+    const end   = { lat: 6.9207, lon: 		79.8621 };
 
     const redZones = await fetchRedZones();
     if (redZones.length === 0) {
@@ -49,10 +49,11 @@ const getSafeRoute = async (req, res) => {
         overview: "full",
       },
     });
+
     if (!response.data.routes || response.data.routes.length === 0) {
       return res.status(404).json({ error: "No routes found" });
-      
     }
+
     console.log(`\n📍 Found ${response.data.routes.length} route(s) from Mapbox`);
 
     const originalRoute       = response.data.routes[0];
@@ -100,56 +101,96 @@ const getSafeRoute = async (req, res) => {
       }
     }
 
+    // Step 3: Waypoint-based avoidance
     if (!safeRoute && originalIsDangerous) {
+      console.log("\n⚠️ Trying waypoint-based avoidance...");
       const hitZone = redZones.find(zone =>
         routeIntersectsZones(originalRouteCoords, [zone])
       );
-    
+
       if (hitZone) {
         const waypoints = computeAvoidanceWaypoint(hitZone, start, end);
-    
         for (const wp of waypoints) {
+          console.log(`Trying waypoint: ${wp.lat.toFixed(5)}, ${wp.lon.toFixed(5)}`);
           const waypointUrl = `https://api.mapbox.com/directions/v5/mapbox/driving/${start.lon},${start.lat};${wp.lon},${wp.lat};${end.lon},${end.lat}`;
-    
-          const wpResponse = await axios.get(waypointUrl, {
-            params: {
-              geometries: "geojson",
-              access_token: process.env.MAPBOX_TOKEN,
-              alternatives: true,
-              overview: "full",
-            },
-          });
-    
-          for (let route of wpResponse.data.routes) {
-            if (!routeIntersectsZones(route.geometry.coordinates, redZones)) {
-              safeRoute = route.geometry.coordinates;
-              safeRouteData = route;
-              break;
+          try {
+            const wpResponse = await axios.get(waypointUrl, {
+              params: {
+                geometries: "geojson",
+                access_token: process.env.MAPBOX_TOKEN,
+                alternatives: true,
+                overview: "full",
+              },
+            });
+            for (let route of wpResponse.data.routes) {
+              if (!routeIntersectsZones(route.geometry.coordinates, redZones)) {
+                safeRoute     = route.geometry.coordinates;
+                safeRouteData = route;
+                console.log("✅ Found safe route via waypoint avoidance!");
+                break;
+              }
             }
+          } catch (e) {
+            console.log(`Waypoint request failed: ${e.message}`);
           }
-    
           if (safeRoute) break;
         }
       }
     }
+
+    // Build response
     const responseData = {
       start,
       end,
-      redZones,
+      redZones: redZones.map((zone) => ({
+        center:  { lat: zone.lat, lon: zone.lon },
+        radius:  zone.radius,
+        polygon: circleToPolygon(zone.lon, zone.lat, zone.radius, 32).map(
+          (coord) => ({ lat: coord[1], lon: coord[0] })
+        ),
+      })),
       originalRoute: {
-        path: originalRouteCoords,
+        path:        originalRouteCoords.map((coord) => ({ lat: coord[1], lon: coord[0] })),
+        distance:    originalRoute.distance,
+        duration:    originalRoute.duration,
         isDangerous: originalIsDangerous,
+        color:       originalIsDangerous ? "red" : "blue",
       },
+      totalRoutesChecked: response.data.routes.length,
     };
-    
+
     if (safeRoute && originalIsDangerous) {
       responseData.safeRoute = {
-        path: safeRoute,
+        path:        safeRoute.map((coord) => ({ lat: coord[1], lon: coord[0] })),
+        distance:    safeRouteData.distance,
+        duration:    safeRouteData.duration,
         isDangerous: false,
+        color:       "green",
       };
-    } else {
+      responseData.message = "✅ Safe alternative route found!";
+    } else if (!safeRoute && originalIsDangerous) {
       responseData.safeRoute = null;
+      responseData.message   = "⚠️ Warning: No safe alternative route available. Original route passes through danger zone.";
+    } else {
+      responseData.safeRoute = {
+        path:        originalRouteCoords.map((coord) => ({ lat: coord[1], lon: coord[0] })),
+        distance:    originalRoute.distance,
+        duration:    originalRoute.duration,
+        isDangerous: false,
+        color:       "green",
+      };
+      responseData.message = "✅ Original route is safe!";
     }
-    
+
     res.json(responseData);
-  
+
+  } catch (err) {
+    console.error("Error:", err.response?.data || err.message);
+    res.status(500).json({
+      error:   "Error fetching route",
+      details: err.response?.data || err.message,
+    });
+  }
+};
+
+export { getSafeRoute };
