@@ -49,3 +49,6 @@ const getSafeRoute = async (req, res) => {
         overview: "full",
       },
     });
+    if (!response.data.routes || response.data.routes.length === 0) {
+      return res.status(404).json({ error: "No routes found" });
+    }
