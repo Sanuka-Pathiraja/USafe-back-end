@@ -73,4 +73,30 @@ const getSafeRoute = async (req, res) => {
         safeRoute     = route.geometry.coordinates;
         safeRouteData = route;
         break;
+      } else {
+        console.log(`❌ Route ${i + 1} passes through danger zone`);
+      }
+    }
+
+    // Step 2: Try exclude=toll
+    if (!safeRoute && originalIsDangerous) {
+      console.log("\n⚠️ Trying exclude=toll...");
+      const tollResponse = await axios.get(url, {
+        params: {
+          geometries: "geojson",
+          access_token: process.env.MAPBOX_TOKEN,
+          alternatives: true,
+          overview: "full",
+          exclude: "toll",
+        },
+      });
+      for (let route of tollResponse.data.routes) {
+        if (!routeIntersectsZones(route.geometry.coordinates, redZones)) {
+          safeRoute     = route.geometry.coordinates;
+          safeRouteData = route;
+          console.log("✅ Found safe route via exclude=toll!");
+          break;
+        }
+      }
+    }
   
