@@ -60,4 +60,17 @@ const getSafeRoute = async (req, res) => {
     const originalIsDangerous = routeIntersectsZones(originalRouteCoords, redZones);
 
     console.log(`\n🛣️ Original route is ${originalIsDangerous ? "DANGEROUS ❌" : "SAFE ✅"}`);
+
+    let safeRoute     = null;
+    let safeRouteData = null;
+
+    // Step 1: Check Mapbox alternatives
+    for (let i = 0; i < response.data.routes.length; i++) {
+      const route = response.data.routes[i];
+      console.log(`\nChecking route ${i + 1}:`);
+      if (!routeIntersectsZones(route.geometry.coordinates, redZones)) {
+        console.log(`✅ Route ${i + 1} is SAFE!`);
+        safeRoute     = route.geometry.coordinates;
+        safeRouteData = route;
+        break;
   
