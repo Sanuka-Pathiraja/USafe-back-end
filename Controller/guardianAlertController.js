@@ -10,7 +10,7 @@ function normalizePhone(phone) {
   if (typeof phone !== "string") {
     return "";
   }
-  return phone.trim();
+  return phone.trim().replace(/[\s\-().]/g, "");
 }
 
 function isSmsConfigured() {
@@ -18,7 +18,7 @@ function isSmsConfigured() {
 }
 
 function isLikelyPhoneNumber(value) {
-  return /^\+?[0-9]{9,15}$/.test(String(value || "").trim());
+  return /^\+?[0-9]{9,15}$/.test(normalizePhone(value || ""));
 }
 
 export async function sendCheckpointAlert(req, res) {
@@ -76,11 +76,13 @@ export async function sendCheckpointAlert(req, res) {
 
         try {
           const smsResult = await sendSms({ to: phone, body: String(alertMessage) });
+          const ok = smsResult?.success === true;
           results.push({
             contactId: contact.contactId,
             phone,
-            ok: true,
+            ok,
             result: smsResult,
+            ...(ok ? {} : { error: smsResult?.message || "SMS not sent" }),
           });
         } catch (smsError) {
           results.push({
