@@ -7,6 +7,7 @@ import time
 import urllib.parse
 import urllib.request
 
+# External data sources used for live safety scoring (no API key required).
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 WORLDPPOP_STATS_URL = "https://api.worldpop.org/v1/services/stats"
 WORLDPOP_TASK_URL = "https://api.worldpop.org/v1/tasks/{task_id}"
@@ -68,6 +69,7 @@ def extract_element_lat_lng(element):
 
 
 def nearest_google_place_distance_km(lat, lon, place_type, radii_meters=(3000, 7000, 15000)):
+    # Optional Google Places fallback (requires GOOGLE_MAPS_API_KEY / GOOGLE_PLACES_API_KEY).
     api_key = (os.environ.get("GOOGLE_MAPS_API_KEY") or os.environ.get("GOOGLE_PLACES_API_KEY") or "").strip()
     if not api_key:
         return None
@@ -108,6 +110,7 @@ def nearest_google_place_distance_km(lat, lon, place_type, radii_meters=(3000, 7
 
 
 def nearest_amenity_distance_km(lat, lon, amenity, radii_meters=(4000, 10000)):
+    # Primary source: Overpass (OpenStreetMap) for nearby hospitals/police.
     for radius in radii_meters:
         query = f"""
 [out:json][timeout:10];
@@ -141,6 +144,7 @@ out center;
         except Exception:
             continue
 
+    # Fallback to Google Places if Overpass fails.
     google_type = "police" if amenity == "police" else "hospital"
     return nearest_google_place_distance_km(lat, lon, google_type)
 
@@ -183,6 +187,7 @@ def make_square_geojson(lat, lon, half_side_km=0.5):
 
 
 def worldpop_density_per_km2(lat, lon, year=None):
+    # WorldPop public API provides population density around the location.
     # Public WorldPop datasets listed by this API currently go up to 2020.
     year_value = year or min(2020, time.gmtime().tm_year)
     geojson = make_square_geojson(lat, lon, half_side_km=0.5)

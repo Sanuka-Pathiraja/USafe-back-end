@@ -161,6 +161,7 @@ export function getSafetyScore(req, res) {
     }
   }
 
+  // Spawn the Python scorer (live safety score engine).
   const pythonBin = process.env.PYTHON_EXECUTABLE || "python";
 
   const pythonProcess = spawn(pythonBin, [
