@@ -27,3 +27,14 @@ function computeAvoidanceWaypoint(zone, start, end) {
 
   return [wp1, wp2];
 }
+
+const getSafeRoute = async (req, res) => {
+  try {
+
+    const start = { lat:	6.9269, lon: 		79.8658};
+    const end   = { lat: 		6.9279, lon: 		79.8631 };
+
+    const redZones = await fetchRedZones();
+    if (redZones.length === 0) {
+      console.log("ℹ️  No redzones active — all routes are safe by default.");
+    }
