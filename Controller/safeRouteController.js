@@ -51,4 +51,13 @@ const getSafeRoute = async (req, res) => {
     });
     if (!response.data.routes || response.data.routes.length === 0) {
       return res.status(404).json({ error: "No routes found" });
+      
     }
+    console.log(`\n📍 Found ${response.data.routes.length} route(s) from Mapbox`);
+
+    const originalRoute       = response.data.routes[0];
+    const originalRouteCoords = originalRoute.geometry.coordinates;
+    const originalIsDangerous = routeIntersectsZones(originalRouteCoords, redZones);
+
+    console.log(`\n🛣️ Original route is ${originalIsDangerous ? "DANGEROUS ❌" : "SAFE ✅"}`);
+  
