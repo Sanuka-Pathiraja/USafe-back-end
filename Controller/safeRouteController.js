@@ -38,3 +38,14 @@ const getSafeRoute = async (req, res) => {
     if (redZones.length === 0) {
       console.log("ℹ️  No redzones active — all routes are safe by default.");
     }
+
+    const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${start.lon},${start.lat};${end.lon},${end.lat}`;
+
+    const response = await axios.get(url, {
+      params: {
+        geometries: "geojson",
+        access_token: process.env.MAPBOX_TOKEN,
+        alternatives: true,
+        overview: "full",
+      },
+    });
