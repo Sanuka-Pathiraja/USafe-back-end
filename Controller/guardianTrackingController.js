@@ -2,6 +2,7 @@ import AppDataSource from "../config/data-source.js";
 import { sendSingleSMS } from "../CallFeat/quicksend.js";
 import { notifyUser } from "../utils/wsHub.js";
 import { haversineMeters } from "../utils/geo.js";
+import { startTrip } from "./TripController.js";
 
 const DEFAULT_GUARDIAN_ROUTES_TABLE = "guardian_routes_app";
 const DEFAULT_GUARDIAN_PROGRESS_TABLE = "guardian_route_progress";
@@ -98,6 +99,21 @@ export async function trackGuardianProgress(req, res) {
     const userId = req.user?.id;
     if (!userId) {
       return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    // New Guardian flow: frontend starts a trip session via /api/guardian/track.
+    // When payload includes trip setup fields, delegate to TripController.startTrip.
+    const isTripStartPayload =
+      Boolean(req.body?.tripName) ||
+      Number.isFinite(Number(req.body?.etaMinutes)) ||
+      Array.isArray(req.body?.checkpoints) ||
+      Array.isArray(req.body?.contactIds);
+
+    if (isTripStartPayload) {
+      if (req.body?.durationMinutes === undefined && req.body?.etaMinutes !== undefined) {
+        req.body.durationMinutes = req.body.etaMinutes;
+      }
+      return startTrip(req, res);
     }
 
     const routeId = toNumber(req.body.routeId ?? req.body.route_id);

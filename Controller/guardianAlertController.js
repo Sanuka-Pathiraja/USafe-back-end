@@ -1,5 +1,6 @@
 // Handles real-time alerts when the child reaches a checkpoint
 import { sendSingleSMS } from "../CallFeat/quicksend.js";
+import { sendSms } from "../services/SmsService.js";
 import AppDataSource from "../config/data-source.js";
 
 const ALLOWED_STATUSES = new Set(["arrived", "danger", "checkpoint"]);
@@ -23,6 +24,90 @@ function isLikelyPhoneNumber(value) {
 export async function sendCheckpointAlert(req, res) {
   try {
     const requestId = req.requestId || "n/a";
+    const userId = req.user?.id;
+    const { tripId, message } = req.body || {};
+
+    // New Guardian flow: frontend sends tripId + message per checkpoint.
+    if (tripId || message) {
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      if (!tripId || !message) {
+        return res.status(400).json({ error: "tripId and message are required" });
+      }
+
+      const tripRepo = AppDataSource.getRepository("TripSession");
+      const trip = await tripRepo.findOneBy({ id: String(tripId), userId });
+      if (!trip) {
+        return res.status(404).json({ error: "Trip not found" });
+      }
+
+      const contactIds = Array.isArray(trip.contactIds) ? trip.contactIds : [];
+      if (contactIds.length === 0) {
+        return res.status(400).json({ error: "Trip has no contactIds" });
+      }
+
+      const contactRepo = AppDataSource.getRepository("Contact");
+      const contacts = await contactRepo.find({
+        where: contactIds.map((contactId) => ({
+          contactId,
+          user: { id: userId },
+        })),
+        select: {
+          contactId: true,
+          name: true,
+          phone: true,
+        },
+      });
+
+      const results = [];
+      for (const contact of contacts) {
+        const phone = normalizePhone(contact.phone || "");
+        if (!isLikelyPhoneNumber(phone)) {
+          results.push({
+            contactId: contact.contactId,
+            phone,
+            ok: false,
+            error: "Invalid phone number format",
+          });
+          continue;
+        }
+
+        try {
+          const smsResult = await sendSms({ to: phone, body: String(message) });
+          results.push({
+            contactId: contact.contactId,
+            phone,
+            ok: true,
+            result: smsResult,
+          });
+        } catch (smsError) {
+          results.push({
+            contactId: contact.contactId,
+            phone,
+            ok: false,
+            error: smsError?.message || "SMS send failed",
+          });
+        }
+      }
+
+      const sent = results.filter((r) => r.ok).length;
+      const failed = results.length - sent;
+
+      console.log(
+        `[${requestId}] Guardian trip alert sent: tripId=${tripId} sent=${sent} failed=${failed}`
+      );
+
+      return res.status(200).json({
+        success: true,
+        tripId: String(tripId),
+        sent,
+        failed,
+        results,
+      });
+    }
+
     const { routeName, checkpointName, status } = req.body;
     let parentPhone = normalizePhone(req.body.parentPhone || req.user?.phone || "");
     const normalizedStatus = typeof status === "string" ? status.trim().toLowerCase() : "";
