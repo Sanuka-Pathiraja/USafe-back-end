@@ -99,4 +99,37 @@ const getSafeRoute = async (req, res) => {
         }
       }
     }
+
+    if (!safeRoute && originalIsDangerous) {
+      const hitZone = redZones.find(zone =>
+        routeIntersectsZones(originalRouteCoords, [zone])
+      );
+    
+      if (hitZone) {
+        const waypoints = computeAvoidanceWaypoint(hitZone, start, end);
+    
+        for (const wp of waypoints) {
+          const waypointUrl = `https://api.mapbox.com/directions/v5/mapbox/driving/${start.lon},${start.lat};${wp.lon},${wp.lat};${end.lon},${end.lat}`;
+    
+          const wpResponse = await axios.get(waypointUrl, {
+            params: {
+              geometries: "geojson",
+              access_token: process.env.MAPBOX_TOKEN,
+              alternatives: true,
+              overview: "full",
+            },
+          });
+    
+          for (let route of wpResponse.data.routes) {
+            if (!routeIntersectsZones(route.geometry.coordinates, redZones)) {
+              safeRoute = route.geometry.coordinates;
+              safeRouteData = route;
+              break;
+            }
+          }
+    
+          if (safeRoute) break;
+        }
+      }
+    }
   
