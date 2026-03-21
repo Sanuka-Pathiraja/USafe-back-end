@@ -132,4 +132,24 @@ const getSafeRoute = async (req, res) => {
         }
       }
     }
+    const responseData = {
+      start,
+      end,
+      redZones,
+      originalRoute: {
+        path: originalRouteCoords,
+        isDangerous: originalIsDangerous,
+      },
+    };
+    
+    if (safeRoute && originalIsDangerous) {
+      responseData.safeRoute = {
+        path: safeRoute,
+        isDangerous: false,
+      };
+    } else {
+      responseData.safeRoute = null;
+    }
+    
+    res.json(responseData);
   
