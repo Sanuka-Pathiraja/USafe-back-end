@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { routeIntersectsZones } from "../../utils/zoneChecker.js";
+import routeIntersectsZones from "../../utils/zoneChecker.js";
 
 describe("routeIntersectsZones", () => {
   const zone = { lat: 6.9271, lon: 79.8612, radius: 500 }; // 500m radius, Colombo

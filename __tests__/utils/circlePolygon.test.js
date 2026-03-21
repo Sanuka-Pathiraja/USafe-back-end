@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { circlePolygon } from "../../utils/circlePolygon.js";
+import circlePolygon from "../../utils/circlePolygon.js";
 
 describe("circlePolygon", () => {
   it("returns numPoints + 1 coordinates (closed ring) with default 32 points", () => {

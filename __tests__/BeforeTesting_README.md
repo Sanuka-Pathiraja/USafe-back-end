@@ -22,7 +22,7 @@ That's all — Vitest is already listed as a dev dependency in `package.json`. N
 npm test
 ```
 
-Expected output: **216 tests passing across 26 test files**
+Expected output: **230 tests passing across 29 test files**
 
 ---
 
@@ -37,6 +37,13 @@ npm run test:watch
 ## 4. Run a Single Test File
 
 Copy the line for whichever file you want to test:
+
+### CallFeat
+
+```bash
+# Notify.lk balance checker
+npx vitest run __tests__/CallFeat/notifylkStatus.test.js
+```
 
 ### Controllers
 
@@ -91,6 +98,9 @@ npx vitest run __tests__/controllers/StripeWebHookHandler.test.js
 
 # PayHere payment + notify endpoint
 npx vitest run __tests__/controllers/payhere.controller.test.js
+
+# Stripe payment intent (makePayment)
+npx vitest run __tests__/controllers/stripeController.test.js
 ```
 
 ### Services
@@ -137,6 +147,9 @@ npx vitest run __tests__/utils/circlePolygon.test.js
 ## 5. Run a Specific Group of Tests
 
 ```bash
+# All CallFeat tests
+npx vitest run __tests__/CallFeat
+
 # All controller tests
 npx vitest run __tests__/controllers
 
@@ -156,6 +169,7 @@ npx vitest run __tests__/middleware
 
 | Area | Test File | Tests |
 |------|-----------|-------|
+| Notify.lk balance | `CallFeat/notifylkStatus.test.js` | 6 |
 | Auth middleware | `middleware/authMiddleware.test.js` | 4 |
 | User controller | `controllers/UserController.test.js` | 8 |
 | Contact controller | `controllers/ContactController.test.js` | 14 |
@@ -170,9 +184,10 @@ npx vitest run __tests__/middleware
 | SMS (Notify.lk) | `controllers/NotifyLkSmsController.test.js` | 5 |
 | Bulk SMS (Notify.lk) | `controllers/NotifyLkBulkSmsController.test.js` | 6 |
 | Voice call | `controllers/CallController.test.js` | 4 |
-| Safe route | `controllers/safeRouteController.test.js` | 6 |
+| Safe route | `controllers/safeRouteController.test.js` | 7 |
 | Stripe checkout | `controllers/stripeCheckoutController.test.js` | 3 |
 | Stripe webhook | `controllers/StripeWebHookHandler.test.js` | 6 |
+| Stripe payment intent | `controllers/stripeController.test.js` | 3 |
 | PayHere | `controllers/payhere.controller.test.js` | 3 |
 | SMS service | `services/SmsService.test.js` | 7 |
 | Firebase messaging | `services/firebaseMessagingService.test.js` | 9 |
@@ -182,7 +197,8 @@ npx vitest run __tests__/middleware
 | Phone normalization | `utils/normalizeNumberFormat.test.js` | 7 |
 | PayHere hash | `utils/payhereHash.test.js` | 5 |
 | Circle polygon | `utils/circlePolygon.test.js` | 5 |
-| **Total** | **26 files** | **216 tests** |
+| Red zone fetcher | `utils/fetchRedZones.test.js` | 4 |
+| **Total** | **29 files** | **230 tests** |
 
 ---
 
