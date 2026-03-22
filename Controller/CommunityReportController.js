@@ -85,10 +85,155 @@ function hasLocationCoordinateInput(body = {}) {
   return candidateValues.some((value) => value !== undefined && value !== null && String(value).trim() !== "");
 }
 
+function parseStringArrayInput(value) {
+  if (Array.isArray(value)) {
+    return value
+      .flatMap((item) => parseStringArrayInput(item))
+      .filter(Boolean);
+  }
+
+  if (typeof value !== "string") return [];
+
+  const text = value.trim();
+  if (!text) return [];
+
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) {
+      return parsed
+        .map((item) => String(item || "").trim())
+        .filter(Boolean);
+    }
+  } catch {
+    // Fall back to plain text parsing below.
+  }
+
+  if (text.includes(",")) {
+    return text
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  return [text];
+}
+
 function getReportCoordinates(report) {
   const direct = normalizeCoordinatesObject(report?.locationCoordinates);
   if (direct) return direct;
   return extractCoordinates(report?.location);
+}
+
+function buildAbsoluteUrl(req, value) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+
+  const normalizedPath = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  return `${req.protocol}://${req.get("host")}${normalizedPath}`;
+}
+
+function normalizeImageUrls(req, images = []) {
+  if (!Array.isArray(images)) return [];
+  return images
+    .map((image) => buildAbsoluteUrl(req, image) || image)
+    .filter(Boolean);
+}
+
+function buildDisplayName(user) {
+  const fullName = [user?.firstName, user?.lastName]
+    .map((part) => String(part || "").trim())
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+
+  if (fullName) return fullName;
+
+  const fallbackEmailName = String(user?.email || "").split("@")[0]?.trim();
+  if (fallbackEmailName) return fallbackEmailName;
+
+  return user?.id ? `User ${user.id}` : "Unknown User";
+}
+
+function buildUsername(user) {
+  const explicitUsername = typeof user?.username === "string" ? user.username.trim() : "";
+  if (explicitUsername) return explicitUsername;
+
+  const emailLocalPart = String(user?.email || "").split("@")[0]?.trim();
+  return emailLocalPart || null;
+}
+
+function buildPublicUser(req, user) {
+  return {
+    userId: user?.id ?? null,
+    name: buildDisplayName(user),
+    avatarUrl: buildAbsoluteUrl(req, user?.avatar),
+    username: buildUsername(user),
+  };
+}
+
+function mapCommentResponse(req, comment) {
+  return {
+    commentId: comment.commentId,
+    text: comment.text,
+    createdAt: comment.createdAt,
+    user: buildPublicUser(req, comment.user),
+  };
+}
+
+function mapReportResponse(req, report, currentUserId) {
+  const likes = Array.isArray(report.likes) ? report.likes : [];
+  const comments = Array.isArray(report.comments) ? report.comments : [];
+
+  return {
+    reportId: report.reportId,
+    reportContent: report.reportContent,
+    location: report.location,
+    locationCoordinates: report.locationCoordinates || null,
+    reportDate_time: report.reportDate_time,
+    images_proofs: normalizeImageUrls(req, report.images_proofs),
+    issueTypes: Array.isArray(report.issueTypes) ? report.issueTypes : [],
+    likeCount: likes.length,
+    commentCount: comments.length,
+    isLikedByCurrentUser: likes.some((like) => like.user?.id === currentUserId),
+    user: buildPublicUser(req, report.user),
+  };
+}
+
+async function findReportById(reportRepo, reportId) {
+  return reportRepo.findOne({
+    where: { reportId },
+    relations: {
+      user: true,
+      likes: { user: true },
+      comments: { user: true },
+    },
+    order: {
+      comments: {
+        createdAt: "ASC",
+      },
+    },
+  });
+}
+
+async function getLikeSummary(likeRepo, reportId, currentUserId) {
+  const [likeCount, likedRecord] = await Promise.all([
+    likeRepo.count({
+      where: { report: { reportId } },
+    }),
+    likeRepo.findOne({
+      where: {
+        report: { reportId },
+        user: { id: currentUserId },
+      },
+    }),
+  ]);
+
+  return {
+    likeCount,
+    isLikedByCurrentUser: Boolean(likedRecord),
+  };
 }
 
 async function getSafetyScoreReports(repo) {
@@ -503,18 +648,20 @@ export const createCommunityReport = async (req, res) => {
     const userRepo = AppDataSource.getRepository("User");
     const { reportContent, reportDate_time, location } = req.body;
     const locationCoordinates = parseLocationCoordinatesInput(req.body);
+    const hasCoordinateInput = hasLocationCoordinateInput(req.body);
+    const issueTypes = [...new Set(parseStringArrayInput(req.body.issueTypes))];
 
-    if (!locationCoordinates) {
-      return res.status(400).json({
-        success: false,
-        error: "locationCoordinates are required. Send numeric lat/lng values for the selected location.",
-      });
-    }
-
-    if (hasLocationCoordinateInput(req.body) && !locationCoordinates) {
+    if (hasCoordinateInput && !locationCoordinates) {
       return res.status(400).json({
         success: false,
         error: "Invalid location coordinates. Send numeric lat/lng values.",
+      });
+    }
+
+    if (!hasCoordinateInput) {
+      return res.status(400).json({
+        success: false,
+        error: "locationCoordinates are required. Send numeric lat/lng values for the selected location.",
       });
     }
 
@@ -547,6 +694,7 @@ export const createCommunityReport = async (req, res) => {
       reportContent,
       reportDate_time,
       images_proofs,
+      issueTypes,
       location,
       locationCoordinates,
       user,
@@ -561,7 +709,8 @@ export const createCommunityReport = async (req, res) => {
         reportId: report.reportId,
         reportContent: report.reportContent,
         reportDate_time: report.reportDate_time,
-        images_proofs: report.images_proofs,
+        images_proofs: normalizeImageUrls(req, report.images_proofs),
+        issueTypes: report.issueTypes || [],
         location: report.location,
         locationCoordinates: report.locationCoordinates,
         userId: user.id,
@@ -588,7 +737,8 @@ export const getMyCommunityReports = async (req, res) => {
       reportId: report.reportId,
       reportContent: report.reportContent,
       reportDate_time: report.reportDate_time,
-      images_proofs: report.images_proofs || [],
+      images_proofs: normalizeImageUrls(req, report.images_proofs),
+      issueTypes: report.issueTypes || [],
       location: report.location,
       locationCoordinates: report.locationCoordinates || null,
       userId: report.user?.id,
@@ -629,7 +779,8 @@ export const getCommunityReportDetails = async (req, res) => {
         reportId: report.reportId,
         reportContent: report.reportContent,
         reportDate_time: report.reportDate_time,
-        images_proofs: report.images_proofs || [],
+        images_proofs: normalizeImageUrls(req, report.images_proofs),
+        issueTypes: report.issueTypes || [],
         location: report.location,
         locationCoordinates: report.locationCoordinates || null,
         userId: report.user?.id,
@@ -637,6 +788,240 @@ export const getCommunityReportDetails = async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
+  }
+};
+
+export const getCommunityFeed = async (req, res) => {
+  try {
+    const repo = AppDataSource.getRepository("CommunityReport");
+    const currentUserId = req.user.id;
+
+    const requestedPage = Number(req.query.page);
+    const requestedLimit = Number(req.query.limit);
+    const page = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+    const limit = Number.isInteger(requestedLimit) && requestedLimit > 0 ? Math.min(requestedLimit, 50) : 10;
+
+    const lat = req.query.lat !== undefined ? parseCoordinateValue(req.query.lat) : null;
+    const lng = req.query.lng !== undefined ? parseCoordinateValue(req.query.lng) : null;
+    const radiusKm =
+      req.query.radiusKm !== undefined && req.query.radiusKm !== null && String(req.query.radiusKm).trim() !== ""
+        ? parseCoordinateValue(req.query.radiusKm)
+        : lat !== null && lng !== null
+          ? 5
+          : null;
+
+    if ((req.query.lat !== undefined || req.query.lng !== undefined) && (lat === null || lng === null)) {
+      return res.status(400).json({ success: false, error: "lat and lng must be numeric values" });
+    }
+
+    if (radiusKm !== null && (!Number.isFinite(radiusKm) || radiusKm <= 0)) {
+      return res.status(400).json({ success: false, error: "radiusKm must be a positive number" });
+    }
+
+    const issueTypeFilter = typeof req.query.issueType === "string" ? req.query.issueType.trim().toLowerCase() : "";
+
+    const reports = await repo.find({
+      relations: {
+        user: true,
+        likes: { user: true },
+        comments: { user: true },
+      },
+      order: { reportDate_time: "DESC" },
+    });
+
+    const filteredReports = reports.filter((report) => {
+      if (issueTypeFilter) {
+        const issueTypes = Array.isArray(report.issueTypes) ? report.issueTypes : [];
+        const hasMatch = issueTypes.some((issueType) => String(issueType).trim().toLowerCase() === issueTypeFilter);
+        if (!hasMatch) return false;
+      }
+
+      if (lat !== null && lng !== null && radiusKm !== null) {
+        const point = getReportCoordinates(report);
+        if (!point) return false;
+        return distanceKm(lat, lng, point.lat, point.lng) <= radiusKm;
+      }
+
+      return true;
+    });
+
+    const total = filteredReports.length;
+    const startIndex = (page - 1) * limit;
+    const paginatedReports = filteredReports.slice(startIndex, startIndex + limit);
+
+    return res.json({
+      success: true,
+      page,
+      limit,
+      total,
+      hasMore: startIndex + paginatedReports.length < total,
+      reports: paginatedReports.map((report) => mapReportResponse(req, report, currentUserId)),
+    });
+  } catch (err) {
+    console.error("Community feed load failed", err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+};
+
+export const addCommunityReportLike = async (req, res) => {
+  try {
+    const reportRepo = AppDataSource.getRepository("CommunityReport");
+    const userRepo = AppDataSource.getRepository("User");
+    const likeRepo = AppDataSource.getRepository("CommunityReportLike");
+
+    const reportId = Number(req.params.reportId);
+    if (!Number.isInteger(reportId) || reportId <= 0) {
+      return res.status(400).json({ success: false, error: "Invalid reportId" });
+    }
+
+    const [report, user] = await Promise.all([
+      reportRepo.findOneBy({ reportId }),
+      userRepo.findOneBy({ id: req.user.id }),
+    ]);
+
+    if (!report) {
+      return res.status(404).json({ success: false, error: "Report not found" });
+    }
+
+    if (!user) {
+      return res.status(404).json({ success: false, error: "User not found" });
+    }
+
+    const existingLike = await likeRepo.findOne({
+      where: {
+        report: { reportId },
+        user: { id: user.id },
+      },
+    });
+
+    if (!existingLike) {
+      const like = likeRepo.create({ report, user });
+      await likeRepo.save(like);
+    }
+
+    const summary = await getLikeSummary(likeRepo, reportId, user.id);
+    return res.status(200).json({ success: true, ...summary });
+  } catch (err) {
+    console.error("Adding report like failed", err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+};
+
+export const removeCommunityReportLike = async (req, res) => {
+  try {
+    const reportRepo = AppDataSource.getRepository("CommunityReport");
+    const likeRepo = AppDataSource.getRepository("CommunityReportLike");
+
+    const reportId = Number(req.params.reportId);
+    if (!Number.isInteger(reportId) || reportId <= 0) {
+      return res.status(400).json({ success: false, error: "Invalid reportId" });
+    }
+
+    const report = await reportRepo.findOneBy({ reportId });
+    if (!report) {
+      return res.status(404).json({ success: false, error: "Report not found" });
+    }
+
+    const existingLike = await likeRepo.findOne({
+      where: {
+        report: { reportId },
+        user: { id: req.user.id },
+      },
+    });
+
+    if (existingLike) {
+      await likeRepo.remove(existingLike);
+    }
+
+    const summary = await getLikeSummary(likeRepo, reportId, req.user.id);
+    return res.status(200).json({ success: true, ...summary });
+  } catch (err) {
+    console.error("Removing report like failed", err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+};
+
+export const getCommunityReportComments = async (req, res) => {
+  try {
+    const commentRepo = AppDataSource.getRepository("CommunityReportComment");
+    const reportRepo = AppDataSource.getRepository("CommunityReport");
+    const reportId = Number(req.params.reportId);
+
+    if (!Number.isInteger(reportId) || reportId <= 0) {
+      return res.status(400).json({ success: false, error: "Invalid reportId" });
+    }
+
+    const report = await reportRepo.findOneBy({ reportId });
+    if (!report) {
+      return res.status(404).json({ success: false, error: "Report not found" });
+    }
+
+    const comments = await commentRepo.find({
+      where: { report: { reportId } },
+      relations: { user: true },
+      order: { createdAt: "ASC" },
+    });
+
+    return res.json({
+      success: true,
+      total: comments.length,
+      comments: comments.map((comment) => mapCommentResponse(req, comment)),
+    });
+  } catch (err) {
+    console.error("Loading report comments failed", err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+};
+
+export const createCommunityReportComment = async (req, res) => {
+  try {
+    const reportRepo = AppDataSource.getRepository("CommunityReport");
+    const userRepo = AppDataSource.getRepository("User");
+    const commentRepo = AppDataSource.getRepository("CommunityReportComment");
+
+    const reportId = Number(req.params.reportId);
+    if (!Number.isInteger(reportId) || reportId <= 0) {
+      return res.status(400).json({ success: false, error: "Invalid reportId" });
+    }
+
+    const text = String(req.body?.text || "").trim();
+    if (!text) {
+      return res.status(400).json({ success: false, error: "Comment text is required" });
+    }
+
+    const [report, user] = await Promise.all([
+      reportRepo.findOneBy({ reportId }),
+      userRepo.findOneBy({ id: req.user.id }),
+    ]);
+
+    if (!report) {
+      return res.status(404).json({ success: false, error: "Report not found" });
+    }
+
+    if (!user) {
+      return res.status(404).json({ success: false, error: "User not found" });
+    }
+
+    const comment = commentRepo.create({
+      text,
+      report,
+      user,
+    });
+
+    await commentRepo.save(comment);
+
+    const savedComment = await commentRepo.findOne({
+      where: { commentId: comment.commentId },
+      relations: { user: true },
+    });
+
+    return res.status(201).json({
+      success: true,
+      comment: mapCommentResponse(req, savedComment || { ...comment, user }),
+    });
+  } catch (err) {
+    console.error("Creating report comment failed", err);
+    return res.status(500).json({ success: false, error: err.message });
   }
 };
 

@@ -1,166 +1,193 @@
 import axios from "axios";
-import { circlePolygon } from "../utils/circlePolygon.js";
-import { routeIntersectsZones } from "../utils/zoneChecker.js";
 
-function parseCoordinate(value, min, max) {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < min || parsed > max) return null;
-  return parsed;
-}
+import circleToPolygon from "../utils/circlePolygon.js";
+import routeIntersectsZones from "../utils/zoneChecker.js";
+import fetchRedZones from "../utils/fetchRedZones.js";
 
-function normalizePoint(raw, latKey = "lat", lonKey = "lon") {
-  if (!raw || typeof raw !== "object") return null;
+// Offset a waypoint perpendicular to the route to avoid a redzone
+function computeAvoidanceWaypoint(zone, start, end) {
+  const OFFSET_METERS = 300;
+  const METERS_PER_DEG_LAT = 111320;
+  const METERS_PER_DEG_LON = 111320 * Math.cos(zone.lat * Math.PI / 180);
 
-  const lat = parseCoordinate(raw[latKey], -90, 90);
-  const lon = parseCoordinate(raw[lonKey], -180, 180);
-  if (lat === null || lon === null) return null;
+  const dx = end.lon - start.lon;
+  const dy = end.lat - start.lat;
 
-  return { lat, lon };
-}
+  const perpLat =  dx / Math.sqrt(dx * dx + dy * dy);
+  const perpLon = -dy / Math.sqrt(dx * dx + dy * dy);
 
-function normalizeZone(zone) {
-  if (!zone || typeof zone !== "object") return null;
+  const wp1 = {
+    lat: zone.lat + perpLat * (OFFSET_METERS / METERS_PER_DEG_LAT),
+    lon: zone.lon + perpLon * (OFFSET_METERS / METERS_PER_DEG_LON),
+  };
+  const wp2 = {
+    lat: zone.lat - perpLat * (OFFSET_METERS / METERS_PER_DEG_LAT),
+    lon: zone.lon - perpLon * (OFFSET_METERS / METERS_PER_DEG_LON),
+  };
 
-  const lat = parseCoordinate(zone.lat, -90, 90);
-  const lon = parseCoordinate(zone.lon, -180, 180);
-  const radius = Number(zone.radius);
-
-  if (lat === null || lon === null || !Number.isFinite(radius) || radius <= 0) {
-    return null;
-  }
-
-  return { lat, lon, radius };
-}
-
-function resolveRequestData(req) {
-  const source = req.method === "GET" ? req.query : req.body || {};
-
-  const start = normalizePoint({
-    lat: source.startLat ?? source.originLat ?? source.lat1,
-    lon: source.startLon ?? source.startLng ?? source.originLng ?? source.lon1 ?? source.lng1,
-  });
-
-  const end = normalizePoint({
-    lat: source.endLat ?? source.destinationLat ?? source.lat2,
-    lon: source.endLon ?? source.endLng ?? source.destinationLng ?? source.lon2 ?? source.lng2,
-  });
-
-  const redZones = Array.isArray(source.redZones) ? source.redZones.map(normalizeZone).filter(Boolean) : [];
-
-  return { start, end, redZones };
-}
-
-async function fetchRoutes(start, end, extraParams = {}) {
-  const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${start.lon},${start.lat};${end.lon},${end.lat}`;
-
-  const response = await axios.get(url, {
-    params: {
-      geometries: "geojson",
-      access_token: process.env.MAPBOX_TOKEN,
-      alternatives: true,
-      overview: "full",
-      ...extraParams,
-    },
-  });
-
-  return response.data?.routes || [];
+  return [wp1, wp2];
 }
 
 const getSafeRoute = async (req, res) => {
   try {
-    if (!process.env.MAPBOX_TOKEN) {
-      return res.status(500).json({
-        success: false,
-        message: "MAPBOX_TOKEN is not configured",
-      });
-    }
 
-    const { start, end, redZones } = resolveRequestData(req);
+    const start = { lat: 6.9221, lon: 	79.8668};
+    const end   = { lat: 6.9207, lon: 		79.8621 };
 
-    if (!start || !end) {
-      return res.status(400).json({
-        success: false,
-        message: "startLat/startLon and endLat/endLon are required and must be valid coordinates",
-      });
-    }
-
+    const redZones = await fetchRedZones();
     if (redZones.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "redZones must contain at least one valid zone with lat, lon, and radius",
-      });
+      console.log("ℹ️  No redzones active — all routes are safe by default.");
     }
 
-    const routes = await fetchRoutes(start, end);
-    if (routes.length === 0) {
-      return res.status(404).json({ success: false, error: "No routes found" });
+    const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${start.lon},${start.lat};${end.lon},${end.lat}`;
+
+    const response = await axios.get(url, {
+      params: {
+        geometries: "geojson",
+        access_token: process.env.MAPBOX_TOKEN,
+        alternatives: true,
+        overview: "full",
+      },
+    });
+
+    if (!response.data.routes || response.data.routes.length === 0) {
+      return res.status(404).json({ error: "No routes found" });
     }
 
-    const originalRoute = routes[0];
+    console.log(`\n📍 Found ${response.data.routes.length} route(s) from Mapbox`);
+
+    const originalRoute       = response.data.routes[0];
     const originalRouteCoords = originalRoute.geometry.coordinates;
     const originalIsDangerous = routeIntersectsZones(originalRouteCoords, redZones);
 
+    console.log(`\n🛣️ Original route is ${originalIsDangerous ? "DANGEROUS ❌" : "SAFE ✅"}`);
+
+    let safeRoute     = null;
     let safeRouteData = null;
-    for (const route of routes) {
+
+    // Step 1: Check Mapbox alternatives
+    for (let i = 0; i < response.data.routes.length; i++) {
+      const route = response.data.routes[i];
+      console.log(`\nChecking route ${i + 1}:`);
       if (!routeIntersectsZones(route.geometry.coordinates, redZones)) {
+        console.log(`✅ Route ${i + 1} is SAFE!`);
+        safeRoute     = route.geometry.coordinates;
         safeRouteData = route;
         break;
+      } else {
+        console.log(`❌ Route ${i + 1} passes through danger zone`);
       }
     }
 
-    if (!safeRouteData && originalIsDangerous) {
-      const alternativeRoutes = await fetchRoutes(start, end, { exclude: "toll" });
-      for (const route of alternativeRoutes) {
+    // Step 2: Try exclude=toll
+    if (!safeRoute && originalIsDangerous) {
+      console.log("\n⚠️ Trying exclude=toll...");
+      const tollResponse = await axios.get(url, {
+        params: {
+          geometries: "geojson",
+          access_token: process.env.MAPBOX_TOKEN,
+          alternatives: true,
+          overview: "full",
+          exclude: "toll",
+        },
+      });
+      for (let route of tollResponse.data.routes) {
         if (!routeIntersectsZones(route.geometry.coordinates, redZones)) {
+          safeRoute     = route.geometry.coordinates;
           safeRouteData = route;
+          console.log("✅ Found safe route via exclude=toll!");
           break;
         }
       }
     }
 
+    // Step 3: Waypoint-based avoidance
+    if (!safeRoute && originalIsDangerous) {
+      console.log("\n⚠️ Trying waypoint-based avoidance...");
+      const hitZone = redZones.find(zone =>
+        routeIntersectsZones(originalRouteCoords, [zone])
+      );
+
+      if (hitZone) {
+        const waypoints = computeAvoidanceWaypoint(hitZone, start, end);
+        for (const wp of waypoints) {
+          console.log(`Trying waypoint: ${wp.lat.toFixed(5)}, ${wp.lon.toFixed(5)}`);
+          const waypointUrl = `https://api.mapbox.com/directions/v5/mapbox/driving/${start.lon},${start.lat};${wp.lon},${wp.lat};${end.lon},${end.lat}`;
+          try {
+            const wpResponse = await axios.get(waypointUrl, {
+              params: {
+                geometries: "geojson",
+                access_token: process.env.MAPBOX_TOKEN,
+                alternatives: true,
+                overview: "full",
+              },
+            });
+            for (let route of wpResponse.data.routes) {
+              if (!routeIntersectsZones(route.geometry.coordinates, redZones)) {
+                safeRoute     = route.geometry.coordinates;
+                safeRouteData = route;
+                console.log("✅ Found safe route via waypoint avoidance!");
+                break;
+              }
+            }
+          } catch (e) {
+            console.log(`Waypoint request failed: ${e.message}`);
+          }
+          if (safeRoute) break;
+        }
+      }
+    }
+
+    // Build response
     const responseData = {
-      success: true,
       start,
       end,
       redZones: redZones.map((zone) => ({
-        center: { lat: zone.lat, lon: zone.lon },
-        radius: zone.radius,
-        polygon: circlePolygon(zone.lon, zone.lat, zone.radius, 32).map((coord) => ({ lat: coord[1], lon: coord[0] })),
+        center:  { lat: zone.lat, lon: zone.lon },
+        radius:  zone.radius,
+        polygon: circleToPolygon(zone.lon, zone.lat, zone.radius, 32).map(
+          (coord) => ({ lat: coord[1], lon: coord[0] })
+        ),
       })),
       originalRoute: {
-        path: originalRouteCoords.map((coord) => ({ lat: coord[1], lon: coord[0] })),
-        distance: originalRoute.distance,
-        duration: originalRoute.duration,
+        path:        originalRouteCoords.map((coord) => ({ lat: coord[1], lon: coord[0] })),
+        distance:    originalRoute.distance,
+        duration:    originalRoute.duration,
         isDangerous: originalIsDangerous,
-        color: originalIsDangerous ? "red" : "blue",
+        color:       originalIsDangerous ? "red" : "blue",
       },
-      totalRoutesChecked: routes.length,
+      totalRoutesChecked: response.data.routes.length,
     };
 
-    if (safeRouteData && originalIsDangerous) {
+    if (safeRoute && originalIsDangerous) {
       responseData.safeRoute = {
-        path: safeRouteData.geometry.coordinates.map((coord) => ({ lat: coord[1], lon: coord[0] })),
-        distance: safeRouteData.distance,
-        duration: safeRouteData.duration,
+        path:        safeRoute.map((coord) => ({ lat: coord[1], lon: coord[0] })),
+        distance:    safeRouteData.distance,
+        duration:    safeRouteData.duration,
         isDangerous: false,
-        color: "blue",
+        color:       "green",
       };
-      responseData.message = "Safe alternative route found";
-    } else if (!safeRouteData && originalIsDangerous) {
+      responseData.message = "✅ Safe alternative route found!";
+    } else if (!safeRoute && originalIsDangerous) {
       responseData.safeRoute = null;
-      responseData.message = "No safe alternative route available. Original route passes through danger zone.";
+      responseData.message   = "⚠️ Warning: No safe alternative route available. Original route passes through danger zone.";
     } else {
-      responseData.safeRoute = null;
-      responseData.message = "Original route is safe";
+      responseData.safeRoute = {
+        path:        originalRouteCoords.map((coord) => ({ lat: coord[1], lon: coord[0] })),
+        distance:    originalRoute.distance,
+        duration:    originalRoute.duration,
+        isDangerous: false,
+        color:       "green",
+      };
+      responseData.message = "✅ Original route is safe!";
     }
 
-    return res.json(responseData);
-  } catch (err) {
-    console.error("SAFE_ROUTE_ERROR", err.response?.data || err.message);
+    res.json(responseData);
 
-    return res.status(500).json({
-      success: false,
-      error: "Error fetching route",
+  } catch (err) {
+    console.error("Error:", err.response?.data || err.message);
+    res.status(500).json({
+      error:   "Error fetching route",
       details: err.response?.data || err.message,
     });
   }

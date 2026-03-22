@@ -40,5 +40,15 @@ export default new EntitySchema({
       target: "CommunityReport",
       inverseSide: "user",
     },
+    communityReportLikes: {
+      type: "one-to-many",
+      target: "CommunityReportLike",
+      inverseSide: "user",
+    },
+    communityReportComments: {
+      type: "one-to-many",
+      target: "CommunityReportComment",
+      inverseSide: "user",
+    },
   },
 });

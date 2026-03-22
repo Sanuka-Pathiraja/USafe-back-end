@@ -222,6 +222,150 @@ function isValidNotifyLkMobile(n) {
   return digits.length >= 9;
 }
 
+function normalizeOptionalText(value) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
+function normalizeFiniteNumber(value) {
+  if (value === undefined || value === null || String(value).trim() === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeLatitude(value) {
+  const latitude = normalizeFiniteNumber(value);
+  if (latitude === null) return null;
+  return latitude >= -90 && latitude <= 90 ? latitude : null;
+}
+
+function normalizeLongitude(value) {
+  const longitude = normalizeFiniteNumber(value);
+  if (longitude === null) return null;
+  return longitude >= -180 && longitude <= 180 ? longitude : null;
+}
+
+function formatCoordinateValue(value) {
+  if (!Number.isFinite(value)) return null;
+  return Number(value.toFixed(6)).toString();
+}
+
+function normalizeTriggeredAt(value) {
+  const text = normalizeOptionalText(value);
+  if (!text) return null;
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return text;
+}
+
+function buildEmergencyContext({ body = {}, profileName = null, fallbackTriggeredAt = null } = {}) {
+  const userName = normalizeOptionalText(body.userName) || normalizeOptionalText(profileName) || "a uSafe user";
+  const triggeredAt = normalizeTriggeredAt(body.triggeredAt) || fallbackTriggeredAt || null;
+  const approximateAddress = normalizeOptionalText(body.approximateAddress);
+  const latitude = normalizeLatitude(body.latitude);
+  const longitude = normalizeLongitude(body.longitude);
+  const hasCoordinates = latitude !== null && longitude !== null;
+  const coordinatesText = hasCoordinates
+    ? `${formatCoordinateValue(latitude)}, ${formatCoordinateValue(longitude)}`
+    : null;
+
+  return {
+    userName,
+    triggeredAt,
+    approximateAddress,
+    latitude,
+    longitude,
+    hasCoordinates,
+    coordinatesText,
+  };
+}
+
+function mergeEmergencyContext(baseContext = {}, body = {}, profileName = null, fallbackTriggeredAt = null) {
+  const bodyContext = buildEmergencyContext({ body, profileName, fallbackTriggeredAt });
+
+  return finalizeEmergencyContext({
+    userName: normalizeOptionalText(body.userName) || baseContext.userName || bodyContext.userName,
+    triggeredAt: normalizeTriggeredAt(body.triggeredAt) || baseContext.triggeredAt || bodyContext.triggeredAt || fallbackTriggeredAt || null,
+    approximateAddress: normalizeOptionalText(body.approximateAddress) || baseContext.approximateAddress || null,
+    latitude: normalizeLatitude(body.latitude) ?? baseContext.latitude ?? null,
+    longitude: normalizeLongitude(body.longitude) ?? baseContext.longitude ?? null,
+  });
+}
+
+function buildEmergencyMessageFromContext(context, fallbackLocation = null) {
+  const lines = [
+    "USafe Alert ⚠️",
+    context.userName,
+  ];
+
+  if (context.triggeredAt) {
+    lines.push(`time: ${context.triggeredAt}`);
+  }
+
+  if (context.approximateAddress) {
+    lines.push(`Address: ${context.approximateAddress}`);
+  } else if (fallbackLocation) {
+    lines.push(`Address: ${fallbackLocation}`);
+  }
+
+  if (context.coordinatesText) {
+    lines.push(`Cordinate: ${context.coordinatesText}`);
+  }
+
+  lines.push("Please contact me immediately or check on me now.");
+  return lines.join("\n");
+}
+
+function buildCallTextFromContext(context, contact = null, extraInstruction = null, options = {}) {
+  const { detailed = false } = options;
+  const lines = [];
+
+  if (contact?.name) {
+    lines.push(`Hello ${contact.name}.`);
+  }
+
+  lines.push("This is a USafe emergency alert.");
+  lines.push(`${context.userName} may be in danger.`);
+
+  if (detailed && context.triggeredAt) {
+    lines.push(`The emergency was triggered at ${context.triggeredAt}.`);
+  }
+
+  if (context.approximateAddress) {
+    lines.push(
+      detailed
+        ? `Approximate address is ${context.approximateAddress}.`
+        : `Location is ${context.approximateAddress}.`
+    );
+  }
+
+  if (detailed && context.coordinatesText) {
+    lines.push(`Coordinates are ${context.coordinatesText}.`);
+  }
+
+  lines.push(extraInstruction || "Please contact me immediately or check on me now.");
+  return lines.join(" ");
+}
+
+function finalizeEmergencyContext(context) {
+  const latitude = Number.isFinite(context?.latitude) ? context.latitude : null;
+  const longitude = Number.isFinite(context?.longitude) ? context.longitude : null;
+  const hasCoordinates = latitude !== null && longitude !== null;
+
+  return {
+    userName: context?.userName || "a uSafe user",
+    triggeredAt: context?.triggeredAt || null,
+    approximateAddress: context?.approximateAddress || null,
+    latitude,
+    longitude,
+    hasCoordinates,
+    coordinatesText: hasCoordinates
+      ? `${formatCoordinateValue(latitude)}, ${formatCoordinateValue(longitude)}`
+      : null,
+  };
+}
+
 /**
  * POST /emergency/start
  * Auth required
@@ -238,29 +382,46 @@ export const startEmergency = async (req, res) => {
     locationText,
     message,
     unicode: unicodeRequested,
+    triggeredAt,
     dangerTime,
     time,
     eventTime,
     messageMode,
     useDefaultTemplate,
   } = req.body || {};
+  let emergencyContext = buildEmergencyContext({ body: req.body || {} });
 
   console.log("========================================");
   console.log("🚨 Emergency Start Requested");
   console.log("👤 User ID:", userId);
   console.log("🕒 Time:", new Date().toISOString());
+  console.log("Emergency Start Request Body:", JSON.stringify(req.body || {}, null, 2));
   logEvent(req, "EMERGENCY_START_REQUEST", {
     userId,
     locationText: locationText || null,
+    triggeredAt: triggeredAt || null,
     dangerTime: dangerTime || time || eventTime || null,
     hasCustomMessage: Boolean(message),
     messageMode: messageMode || null,
     useDefaultTemplate: useDefaultTemplate ?? null,
     unicode: Boolean(unicodeRequested),
+    userName: emergencyContext.userName,
+    approximateAddress: emergencyContext.approximateAddress,
+    latitude: emergencyContext.latitude,
+    longitude: emergencyContext.longitude,
   });
 
   try {
+    const userRepo = AppDataSource.getRepository("User");
     const contactRepo = AppDataSource.getRepository("Contact");
+    const user = await userRepo.findOneBy({ id: userId });
+    const profileName = [user?.firstName, user?.lastName].filter(Boolean).join(" ");
+    const sessionCreatedAt = new Date(startedAt).toISOString();
+    emergencyContext = buildEmergencyContext({
+      body: req.body || {},
+      profileName,
+      fallbackTriggeredAt: sessionCreatedAt,
+    });
     const contacts = await contactRepo.find({
       where: { user: { id: userId } },
       select: {
@@ -345,6 +506,8 @@ export const startEmergency = async (req, res) => {
       })),
       calls: {}, // callId -> {contactIndex,to,status,answered,startedAt,endedAt}
       callAttempts: {},
+      emergencyContext,
+      generatedMessage: null,
       smsReport,
       messaging: {
         success: null,
@@ -359,12 +522,12 @@ export const startEmergency = async (req, res) => {
     });
 
     const safeLocation = String(locationText || "").trim() || "Unknown location";
-    const rawDangerTime = dangerTime || time || eventTime;
-    let safeDangerTime = new Date().toISOString();
-    if (rawDangerTime !== undefined && rawDangerTime !== null && String(rawDangerTime).trim() !== "") {
-      const parsed = new Date(rawDangerTime);
-      safeDangerTime = Number.isNaN(parsed.getTime()) ? String(rawDangerTime) : parsed.toISOString();
-    }
+    const safeDangerTime = emergencyContext.triggeredAt;
+
+    const contextualEmergencyMessage = buildEmergencyMessageFromContext(
+      emergencyContext,
+      safeLocation === "Unknown location" ? null : safeLocation
+    );
 
     const defaultEmergencyMessage =
       `USafe Alert ⚠️\n` +
@@ -376,16 +539,18 @@ export const startEmergency = async (req, res) => {
     const useTemplateFlag = useDefaultTemplate === undefined ? null : Boolean(useDefaultTemplate);
     const shouldUseDefaultTemplate = useTemplateFlag === null ? !isExactMode : useTemplateFlag;
     const msg = !customMessage
-      ? defaultEmergencyMessage
+      ? contextualEmergencyMessage
       : shouldUseDefaultTemplate
-        ? `${customMessage}\nLocation: ${safeLocation}\nTime: ${safeDangerTime}`
+        ? `${customMessage}\n${contextualEmergencyMessage}`
         : customMessage;
     const renderMode = !customMessage
       ? "default-template"
       : shouldUseDefaultTemplate
         ? "custom-plus-location-time"
         : "custom-message";
-    const includesLocationTime = renderMode !== "custom-message";
+    const includesLocationTime =
+      renderMode !== "custom-message" &&
+      Boolean(emergencyContext.approximateAddress || emergencyContext.coordinatesText || safeLocation !== "Unknown location");
     const unicode = resolveUnicodeMode(msg, unicodeRequested);
 
     console.log("📨 Sending Notify.lk SMS to:", validNumbers);
@@ -450,6 +615,7 @@ export const startEmergency = async (req, res) => {
             : "Failed to send emergency messages";
 
       session.smsReport = smsReport;
+      session.generatedMessage = msg;
       session.messaging = { success, code, message, attempted, sent, failed, renderMode, includesLocationTime };
       touchSession(session);
     }
@@ -495,6 +661,7 @@ export const startEmergency = async (req, res) => {
       message: messaging.message,
       renderMode,
       includesLocationTime,
+      emergencyContext,
       messaging: {
         attempted: messaging.attempted,
         sent: messaging.sent,
@@ -559,10 +726,21 @@ export const startCallToContact = async (req, res) => {
     let demo = false;
 
     try {
+      const mergedContext = mergeEmergencyContext(
+        session.emergencyContext || {},
+        req.body || {},
+        null,
+        session.createdAt ? new Date(session.createdAt).toISOString() : null
+      );
+      session.emergencyContext = mergedContext;
+      touchSession(session);
+      const callText = buildCallTextFromContext(mergedContext, session.contacts[idx - 1]);
+      console.log("Emergency Contact Call Text:", callText);
       const result = await makeOutboundCall(to, {
         sessionId,
         contactIndex: idx,
         publicBaseUrl: process.env.PUBLIC_BASE_URL, // optional in demo; needed for real webhook
+        text: callText,
       });
       callId = result?.uuid;
       if (!callId) throw new Error("Vonage did not return uuid");
@@ -664,10 +842,21 @@ export const attemptCallToContact = async (req, res) => {
     let demo = false;
 
     try {
+      const mergedContext = mergeEmergencyContext(
+        session.emergencyContext || {},
+        req.body || {},
+        null,
+        session.createdAt ? new Date(session.createdAt).toISOString() : null
+      );
+      session.emergencyContext = mergedContext;
+      touchSession(session);
+      const callText = buildCallTextFromContext(mergedContext, contact);
+      console.log("Emergency Attempt Call Text:", callText);
       const result = await makeOutboundCall(to, {
         sessionId,
         contactIndex: idx,
         publicBaseUrl: process.env.PUBLIC_BASE_URL,
+        text: callText,
       });
       callId = result?.uuid;
       if (!callId) throw new Error("Vonage did not return uuid");
@@ -886,10 +1075,26 @@ export const callEmergencyServices = async (req, res) => {
     let callId;
     let demo = false;
     try {
+      const mergedContext = mergeEmergencyContext(
+        session.emergencyContext || {},
+        req.body || {},
+        null,
+        session.createdAt ? new Date(session.createdAt).toISOString() : null
+      );
+      session.emergencyContext = mergedContext;
+      touchSession(session);
+      const callText = buildCallTextFromContext(
+        mergedContext,
+        null,
+        "Please dispatch emergency assistance immediately.",
+        { detailed: true }
+      );
+      console.log("Emergency 119 Call Text:", callText);
       const result = await makeOutboundCall(to, {
         sessionId,
         contactIndex: 119,
         publicBaseUrl: process.env.PUBLIC_BASE_URL,
+        text: callText,
       });
       callId = result?.uuid;
       if (!callId) throw new Error("Vonage did not return uuid");
@@ -1046,6 +1251,8 @@ export const getEmergencyStatus = async (req, res) => {
     return res.json({
       sessionId: session.id,
       sessionStatus: session.status,
+      emergencyContext: session.emergencyContext || null,
+      generatedMessage: session.generatedMessage || null,
       messaging: session.messaging || null,
       callAttempts: session.callAttempts || {},
       someoneAnswered: !!session.someoneAnswered,
