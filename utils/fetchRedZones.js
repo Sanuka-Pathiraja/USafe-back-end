@@ -1,11 +1,10 @@
 import supabase from "./supabaseClient.js";
-
-const REDZONE_RADIUS = 50; // hardcoded radius in meters
+import { classifyThreat } from "./threatClassifier.js";
 
 async function fetchRedZones() {
   const { data, error } = await supabase
     .from("community_reports")
-    .select("locationCoordinates")
+    .select("reportId, reportContent, reportDate_time, issueTypes, locationCoordinates, users(firstName, lastName)")
     .not("locationCoordinates", "is", null);
 
   if (error) {
@@ -18,11 +17,24 @@ async function fetchRedZones() {
     return [];
   }
 
-  const redZones = data.map((row) => ({
-    lat:    row.locationCoordinates.lat,
-    lon:    row.locationCoordinates.lng,
-    radius: REDZONE_RADIUS,
-  }));
+  const redZones = data.map((row) => {
+    const { threatLevel, radius } = classifyThreat(row.issueTypes || []);
+    const reporter = row.users
+      ? `${row.users.firstName} ${row.users.lastName}`.trim()
+      : "Anonymous";
+
+    return {
+      reportId:    row.reportId,
+      lat:         row.locationCoordinates.lat,
+      lon:         row.locationCoordinates.lng,
+      radius,
+      threatLevel,
+      issueTypes:  row.issueTypes || [],
+      description: row.reportContent || "",
+      reportedAt:  row.reportDate_time,
+      reporter,
+    };
+  });
 
   console.log(`✅ Loaded ${redZones.length} redzone(s) from Supabase.`);
   return redZones;

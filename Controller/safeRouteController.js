@@ -1,7 +1,7 @@
 import axios from "axios";
 
 import circleToPolygon from "../utils/circlePolygon.js";
-import routeIntersectsZones from "../utils/zoneChecker.js";
+import routeIntersectsZones, { pointInZone } from "../utils/zoneChecker.js";
 import fetchRedZones from "../utils/fetchRedZones.js";
 
 // Offset a waypoint perpendicular to the route to avoid a redzone
@@ -28,25 +28,67 @@ function computeAvoidanceWaypoint(zone, start, end) {
   return [wp1, wp2];
 }
 
+// Serialize a zone into the shape the frontend expects
+function serializeZone(zone) {
+  return {
+    reportId:    zone.reportId,
+    center:      { lat: zone.lat, lon: zone.lon },
+    radius:      zone.radius,
+    threatLevel: zone.threatLevel,
+    issueTypes:  zone.issueTypes,
+    description: zone.description,
+    reporter:    zone.reporter,
+    reportedAt:  zone.reportedAt,
+    polygon:     circleToPolygon(zone.lon, zone.lat, zone.radius, 32).map(
+      (coord) => ({ lat: coord[1], lon: coord[0] })
+    ),
+  };
+}
+
 const getSafeRoute = async (req, res) => {
   try {
+    // Accept coordinates from query params (GET) or body (POST)
+    const source = { ...req.query, ...req.body };
 
-    const start = { lat: 6.9221, lon: 	79.8668};
-    const end   = { lat: 6.9207, lon: 		79.8621 };
+    const startLat = parseFloat(source.startLat);
+    const startLon = parseFloat(source.startLon);
+    const endLat   = parseFloat(source.endLat);
+    const endLon   = parseFloat(source.endLon);
+
+    if ([startLat, startLon, endLat, endLon].some((v) => isNaN(v))) {
+      return res.status(400).json({
+        error: "Missing or invalid coordinates. Provide startLat, startLon, endLat, endLon.",
+      });
+    }
+
+    const start = { lat: startLat, lon: startLon };
+    const end   = { lat: endLat,   lon: endLon   };
 
     const redZones = await fetchRedZones();
     if (redZones.length === 0) {
       console.log("ℹ️  No redzones active — all routes are safe by default.");
     }
 
+    // --- Destination-in-zone check ---
+    const destinationZone = pointInZone(end.lat, end.lon, redZones);
+    if (destinationZone) {
+      return res.status(200).json({
+        destinationDangerous: true,
+        destinationZone:      serializeZone(destinationZone),
+        message:              `⚠️ Your destination is inside a ${destinationZone.threatLevel.toUpperCase()} danger zone. Avoid visiting this location.`,
+        redZones:             redZones.map(serializeZone),
+      });
+    }
+
+    // --- Fetch routes from Mapbox ---
     const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${start.lon},${start.lat};${end.lon},${end.lat}`;
 
     const response = await axios.get(url, {
       params: {
-        geometries: "geojson",
+        geometries:   "geojson",
         access_token: process.env.MAPBOX_TOKEN,
         alternatives: true,
-        overview: "full",
+        overview:     "full",
       },
     });
 
@@ -84,11 +126,11 @@ const getSafeRoute = async (req, res) => {
       console.log("\n⚠️ Trying exclude=toll...");
       const tollResponse = await axios.get(url, {
         params: {
-          geometries: "geojson",
+          geometries:   "geojson",
           access_token: process.env.MAPBOX_TOKEN,
           alternatives: true,
-          overview: "full",
-          exclude: "toll",
+          overview:     "full",
+          exclude:      "toll",
         },
       });
       for (let route of tollResponse.data.routes) {
@@ -116,10 +158,10 @@ const getSafeRoute = async (req, res) => {
           try {
             const wpResponse = await axios.get(waypointUrl, {
               params: {
-                geometries: "geojson",
+                geometries:   "geojson",
                 access_token: process.env.MAPBOX_TOKEN,
                 alternatives: true,
-                overview: "full",
+                overview:     "full",
               },
             });
             for (let route of wpResponse.data.routes) {
@@ -138,17 +180,12 @@ const getSafeRoute = async (req, res) => {
       }
     }
 
-    // Build response
+    // --- Build response ---
     const responseData = {
+      destinationDangerous: false,
       start,
       end,
-      redZones: redZones.map((zone) => ({
-        center:  { lat: zone.lat, lon: zone.lon },
-        radius:  zone.radius,
-        polygon: circleToPolygon(zone.lon, zone.lat, zone.radius, 32).map(
-          (coord) => ({ lat: coord[1], lon: coord[0] })
-        ),
-      })),
+      redZones: redZones.map(serializeZone),
       originalRoute: {
         path:        originalRouteCoords.map((coord) => ({ lat: coord[1], lon: coord[0] })),
         distance:    originalRoute.distance,
@@ -193,4 +230,18 @@ const getSafeRoute = async (req, res) => {
   }
 };
 
-export { getSafeRoute };
+// Standalone endpoint — returns all active danger zones for map display
+const getDangerZones = async (_req, res) => {
+  try {
+    const redZones = await fetchRedZones();
+    res.json({
+      count:    redZones.length,
+      zones:    redZones.map(serializeZone),
+    });
+  } catch (err) {
+    console.error("Error fetching danger zones:", err.message);
+    res.status(500).json({ error: "Failed to load danger zones" });
+  }
+};
+
+export { getSafeRoute, getDangerZones };

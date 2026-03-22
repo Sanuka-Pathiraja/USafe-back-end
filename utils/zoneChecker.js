@@ -43,4 +43,15 @@ function routeIntersectsZones(routeCoords, redZones) {
   return false;
 }
 
+// Returns the first zone the point falls inside, or null if none.
+function pointInZone(lat, lon, zones) {
+  for (const zone of zones) {
+    if (calculateDistance(lat, lon, zone.lat, zone.lon) <= zone.radius) {
+      return zone;
+    }
+  }
+  return null;
+}
+
 export default routeIntersectsZones;
+export { pointInZone };
