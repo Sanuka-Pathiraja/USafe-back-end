@@ -3,6 +3,10 @@ import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
 import AppDataSource from "../config/data-source.js";
+import {
+  buildPublicTrackingPayload,
+  getTrackingIdValidationError,
+} from "../utils/tracking.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -13,6 +17,12 @@ const RAW_SAFETY_SCORE_CACHE_TTL_MS = Number(process.env.SAFETY_SCORE_CACHE_TTL_
 const SAFETY_SCORE_CACHE_TTL_MS = Number.isFinite(RAW_SAFETY_SCORE_CACHE_TTL_MS)
   ? Math.min(Math.max(Math.trunc(RAW_SAFETY_SCORE_CACHE_TTL_MS), 0), 10 * 60 * 1000)
   : 60000;
+
+function setNoCacheHeaders(res) {
+  res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.set("Pragma", "no-cache");
+  res.set("Expires", "0");
+}
 
 function getCoordinateFromSources(sources, keys) {
   for (const source of sources) {
@@ -265,4 +275,30 @@ export function getSafetyScore(req, res) {
       });
     }
   });
+}
+
+export async function getPublicTripTracking(req, res) {
+  try {
+    const trackingId = String(req.params?.trackingId || req.query?.trackingId || "").trim();
+    const trackingIdError = getTrackingIdValidationError(trackingId);
+
+    if (trackingIdError) {
+      return res.status(400).json({ success: false, message: trackingIdError });
+    }
+
+    const tripRepo = AppDataSource.getRepository("TripSession");
+    const trip = await tripRepo.findOneBy({ trackingId });
+    if (!trip) {
+      return res.status(404).json({ success: false, message: "Trip tracking session not found" });
+    }
+
+    setNoCacheHeaders(res);
+    return res.status(200).json({
+      success: true,
+      message: "Trip tracking data fetched",
+      data: buildPublicTrackingPayload(trip),
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: "Failed to fetch trip tracking data" });
+  }
 }

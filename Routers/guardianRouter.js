@@ -1,11 +1,14 @@
 import { Router } from "express";
 import crypto from "crypto";
-import { getSafetyScore, getGuardianSelfCheck } from "../Controller/guardianController.js";
-import { getPublicTripTracking } from "../Controller/TripController.js";
+import {
+	getSafetyScore,
+	getGuardianSelfCheck,
+	getPublicTripTracking,
+} from "../Controller/guardianController.js";
 import { createGuardianRoute, listGuardianRoutes } from "../Controller/guardianRoutesController.js";
 import { sendCheckpointAlert } from "../Controller/guardianAlertController.js";
 import { trackGuardianProgress } from "../Controller/guardianTrackingController.js";
-import { authMiddleware } from "../middleware/authMiddleware.js";
+import authMiddleware from "../middleware/authMiddleware.js";
 import { generousLimiter, trackingPublicLimiter } from "../middleware/rateLimiter.js";
 
 const router = Router();

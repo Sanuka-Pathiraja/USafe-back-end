@@ -32,11 +32,11 @@ import notificationRouter from "./Routers/NotificationRouter.js";
 import { getLiveSafetyScore } from "./Controller/CommunityReportController.js";
 import guardianRouter from "./Routers/guardianRouter.js";
 import { standardLimiter, generousLimiter, requestTimeout } from "./middleware/rateLimiter.js";
-import {
-  bootstrapTripTimers,
-  shutdownTripSchedulers,
-  startTripExpirySweep,
-} from "./Controller/TripController.js";
+import * as TripController from "./Controller/TripController.js";
+
+const bootstrapTripTimers = TripController.bootstrapTripTimers || (async () => {});
+const shutdownTripSchedulers = TripController.shutdownTripSchedulers || (() => {});
+const startTripExpirySweep = TripController.startTripExpirySweep || (() => {});
 
 // Legacy unused emergency notify scenario (kept commented intentionally)
 // import notifyLkEmergencyRouter from "./Routers/NofityLkSmsRouter.js";
