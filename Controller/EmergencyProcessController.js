@@ -1,4 +1,5 @@
 import AppDataSource from "../config/data-source.js";
+import { supabase } from "../config/supabase.js";
 import { sendNotifySMS } from "../CallFeat/notifylksms.js";
 import makeOutboundCall from "../CallFeat/voiceService.js";
 import { hangupCall } from "../CallFeat/voiceCancel.js";
@@ -618,6 +619,30 @@ export const startEmergency = async (req, res) => {
       session.generatedMessage = msg;
       session.messaging = { success, code, message, attempted, sent, failed, renderMode, includesLocationTime };
       touchSession(session);
+    }
+
+    // Persist session to Supabase (non-blocking — never fails the emergency)
+    try {
+      const ctx = emergencyContext;
+      const now = new Date().toISOString();
+      await supabase.from("emergency_sessions").insert({
+        id: sessionId,
+        user_id: userId,
+        status: "ACTIVE",
+        user_name: ctx.userName || null,
+        triggered_at: ctx.triggeredAt ? new Date(ctx.triggeredAt).toISOString() : now,
+        latitude: ctx.latitude ?? null,
+        longitude: ctx.longitude ?? null,
+        approximate_address: ctx.approximateAddress ?? null,
+        contacts_count: targets.length,
+        sms_attempted: getSession(sessionId)?.messaging?.attempted ?? 0,
+        sms_sent: getSession(sessionId)?.messaging?.sent ?? 0,
+        sms_failed: getSession(sessionId)?.messaging?.failed ?? 0,
+        created_at: now,
+        updated_at: now,
+      });
+    } catch (dbErr) {
+      console.error("⚠️  Supabase insert failed (emergency start):", dbErr?.message);
     }
 
     console.log("📋 SMS Report Summary:", {
@@ -1330,6 +1355,17 @@ export const cancelEmergency = async (req, res) => {
     };
     touchSession(session);
 
+    // Update Supabase row (non-blocking)
+    try {
+      await supabase.from("emergency_sessions").update({
+        status: "CANCELLED",
+        cancelled_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }).eq("id", sessionId);
+    } catch (dbErr) {
+      console.error("⚠️  Supabase update failed (cancel):", dbErr?.message);
+    }
+
     logEvent(req, "EMERGENCY_CANCELLED", {
       sessionId,
       userId,
@@ -1450,6 +1486,70 @@ export const voiceEventWebhook = async (req, res) => {
       reason: "Webhook processing error",
     });
     return res.status(200).json({ ok: true });
+  }
+};
+
+/**
+ * POST /emergency/:sessionId/finish
+ * Auth required
+ * Marks the emergency session as COMPLETED (SOS resolved by user).
+ */
+export const finishEmergency = async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const userId = req.user.id;
+
+    const session = getSession(sessionId);
+    if (!session) return fail(res, 404, "SESSION_NOT_FOUND", "Session not found");
+    if (session.userId !== userId) return fail(res, 403, "FORBIDDEN", "Forbidden");
+
+    if (session.status === "COMPLETED") {
+      return res.json({
+        ok: true,
+        success: true,
+        code: "ALREADY_COMPLETED",
+        message: "This emergency session is already completed.",
+        sessionId,
+      });
+    }
+
+    session.status = "COMPLETED";
+    session.finishedAt = Date.now();
+    touchSession(session);
+
+    // Update Supabase row (non-blocking)
+    try {
+      const now = new Date().toISOString();
+      await supabase.from("emergency_sessions").update({
+        status: "COMPLETED",
+        someone_answered: !!session.someoneAnswered,
+        answered_by: session.answeredBy
+          ? (session.contacts?.[session.answeredByContactIndex - 1]?.name || null)
+          : null,
+        emergency_services_called: !!session.emergencyServicesCalled,
+        finished_at: now,
+        updated_at: now,
+      }).eq("id", sessionId);
+    } catch (dbErr) {
+      console.error("⚠️  Supabase update failed (finish):", dbErr?.message);
+    }
+
+    logEvent(req, "EMERGENCY_FINISHED", {
+      sessionId,
+      userId,
+      someoneAnswered: !!session.someoneAnswered,
+      emergencyServicesCalled: !!session.emergencyServicesCalled,
+    });
+
+    return res.json({
+      ok: true,
+      success: true,
+      code: "COMPLETED",
+      message: "Emergency session finished.",
+      sessionId,
+    });
+  } catch (err) {
+    return fail(res, 500, "INTERNAL_ERROR", err.message || "Internal server error");
   }
 };
 
