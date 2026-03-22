@@ -1,6 +1,13 @@
-// index.js
 import dotenv from "dotenv";
 dotenv.config();
+
+import { printEnvironmentStatus } from "./utils/envValidator.js";
+
+// Validate environment before starting
+if (!printEnvironmentStatus()) {
+  console.error("❌ Environment validation failed. Please fix the issues above.");
+  process.exit(1);
+}
 
 import express from "express";
 import cors from "cors";
@@ -8,6 +15,7 @@ import authMiddleware from "./middleware/authMiddleware.js";
 
 import AppDataSource from "./config/data-source.js";
 import { checkNotifyBalance } from "./CallFeat/notifylkStatus.js";
+import { checkBalance } from "./CallFeat/quicksend.js";
 
 import callRouter from "./Routers/CallRouter.js";
 import smsRouter from "./Routers/SmsRouter.js";
@@ -22,6 +30,13 @@ import tripRouter from "./Routers/TripRouter.js";
 import safeRouteRouter from "./Routers/safeRouteRouter.js";
 import notificationRouter from "./Routers/NotificationRouter.js";
 import { getLiveSafetyScore } from "./Controller/CommunityReportController.js";
+import guardianRouter from "./Routers/guardianRouter.js";
+import { standardLimiter, generousLimiter, requestTimeout } from "./middleware/rateLimiter.js";
+import {
+  bootstrapTripTimers,
+  shutdownTripSchedulers,
+  startTripExpirySweep,
+} from "./Controller/TripController.js";
 
 // Legacy unused emergency notify scenario (kept commented intentionally)
 // import notifyLkEmergencyRouter from "./Routers/NofityLkSmsRouter.js";
@@ -43,6 +58,13 @@ console.log("---");
 
 /* ===================== APP ===================== */
 const app = express();
+
+// Guardian branch hardening middleware, added without changing feat01 route behavior.
+if (process.env.NODE_ENV === "production") {
+  app.use(requestTimeout);
+  app.use("/api", standardLimiter);
+  app.use("/health", generousLimiter);
+}
 
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
@@ -69,6 +91,12 @@ app.use("/user", Userrouter);
 app.use("/contact", contactRouter);
 app.use("/report", communityReportRouter);
 app.use("/api/trip", tripRouter);
+if (process.env.NODE_ENV === "production") {
+  app.use("/trip", standardLimiter, tripRouter);
+} else {
+  app.use("/trip", tripRouter);
+}
+app.use("/api/guardian", guardianRouter);
 app.use("/", safeRouteRouter);
 app.use("/", notificationRouter);
 
@@ -84,12 +112,39 @@ app.use("/payment", stripeRouter);
 
 /* ===================== STRIPE WEBHOOK ===================== */
 import { handleStripeWebhook } from "./Controller/StripeWebHookHandler.js";
-
 if (process.env.NODE_ENV === "development") {
   app.post("/webhook/stripe", express.json(), handleStripeWebhook);
 } else {
   app.post("/webhook/stripe", express.raw({ type: "application/json" }), handleStripeWebhook);
 }
+
+function registerGracefulShutdown() {
+  const shutdown = async (signal) => {
+    console.log(`[SHUTDOWN] Received ${signal}, closing server resources...`);
+    shutdownTripSchedulers();
+
+    try {
+      if (AppDataSource.isInitialized) {
+        await AppDataSource.destroy();
+        console.log("[SHUTDOWN] Data source closed");
+      }
+    } catch (dbError) {
+      console.error("[SHUTDOWN] Data source close error:", dbError);
+    } finally {
+      process.exit(0);
+    }
+  };
+
+  process.on("SIGINT", () => {
+    shutdown("SIGINT");
+  });
+
+  process.on("SIGTERM", () => {
+    shutdown("SIGTERM");
+  });
+}
+
+registerGracefulShutdown();
 
 /* ===================== START SERVER ===================== */
 const PORT = Number(process.env.PORT) || 5000;
@@ -108,7 +163,15 @@ app.listen(PORT, async () => {
   try {
     await AppDataSource.initialize();
     console.log("Data Source initialized! Connected to Supabase.");
+    await bootstrapTripTimers();
+    startTripExpirySweep();
   } catch (err) {
     console.error("Error during Data Source initialization:", err);
+  }
+
+  try {
+    await checkBalance();
+  } catch (error) {
+    console.error("Balance check failed:", error.message);
   }
 });
