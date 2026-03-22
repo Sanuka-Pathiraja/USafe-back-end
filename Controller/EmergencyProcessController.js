@@ -626,18 +626,14 @@ export const startEmergency = async (req, res) => {
       const ctx = emergencyContext;
       const now = new Date().toISOString();
       await supabase.from("emergency_sessions").insert({
-        id: sessionId,
-        user_id: userId,
+        session_id: sessionId,
+        user_id: String(userId),
         status: "ACTIVE",
         user_name: ctx.userName || null,
-        triggered_at: ctx.triggeredAt ? new Date(ctx.triggeredAt).toISOString() : now,
         latitude: ctx.latitude ?? null,
         longitude: ctx.longitude ?? null,
         approximate_address: ctx.approximateAddress ?? null,
-        contacts_count: targets.length,
-        sms_attempted: getSession(sessionId)?.messaging?.attempted ?? 0,
-        sms_sent: getSession(sessionId)?.messaging?.sent ?? 0,
-        sms_failed: getSession(sessionId)?.messaging?.failed ?? 0,
+        started_at: now,
         created_at: now,
         updated_at: now,
       });
@@ -1359,9 +1355,10 @@ export const cancelEmergency = async (req, res) => {
     try {
       await supabase.from("emergency_sessions").update({
         status: "CANCELLED",
-        cancelled_at: new Date().toISOString(),
+        cancellation_message: req.body?.message || null,
+        finished_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-      }).eq("id", sessionId);
+      }).eq("session_id", sessionId);
     } catch (dbErr) {
       console.error("⚠️  Supabase update failed (cancel):", dbErr?.message);
     }
@@ -1492,7 +1489,8 @@ export const voiceEventWebhook = async (req, res) => {
 /**
  * POST /emergency/:sessionId/finish
  * Auth required
- * Marks the emergency session as COMPLETED (SOS resolved by user).
+ * Marks the emergency session as COMPLETED or FAILED.
+ * Idempotent — safe to call more than once.
  */
 export const finishEmergency = async (req, res) => {
   try {
@@ -1503,33 +1501,38 @@ export const finishEmergency = async (req, res) => {
     if (!session) return fail(res, 404, "SESSION_NOT_FOUND", "Session not found");
     if (session.userId !== userId) return fail(res, 403, "FORBIDDEN", "Forbidden");
 
-    if (session.status === "COMPLETED") {
-      return res.json({
-        ok: true,
-        success: true,
-        code: "ALREADY_COMPLETED",
-        message: "This emergency session is already completed.",
-        sessionId,
-      });
+    const {
+      status: finishStatus,
+      someoneAnswered,
+      emergencyServicesCalled,
+      contactsMessaged,
+      failedStepTitle,
+      failedStepReason,
+    } = req.body || {};
+
+    const allowedStatuses = ["COMPLETED", "FAILED"];
+    if (!allowedStatuses.includes(finishStatus)) {
+      return fail(res, 400, "INVALID_STATUS", `status must be one of: ${allowedStatuses.join(", ")}`);
     }
 
-    session.status = "COMPLETED";
+    // Update in-memory session (idempotent)
+    session.status = finishStatus;
     session.finishedAt = Date.now();
     touchSession(session);
 
-    // Update Supabase row (non-blocking)
+    // Update Supabase row (non-blocking, idempotent)
     try {
       const now = new Date().toISOString();
       await supabase.from("emergency_sessions").update({
-        status: "COMPLETED",
-        someone_answered: !!session.someoneAnswered,
-        answered_by: session.answeredBy
-          ? (session.contacts?.[session.answeredByContactIndex - 1]?.name || null)
-          : null,
-        emergency_services_called: !!session.emergencyServicesCalled,
+        status: finishStatus,
+        someone_answered: !!someoneAnswered,
+        emergency_services_called: !!emergencyServicesCalled,
+        contacts_messaged: !!contactsMessaged,
+        failed_step_title: failedStepTitle ?? null,
+        failed_step_reason: failedStepReason ?? null,
         finished_at: now,
         updated_at: now,
-      }).eq("id", sessionId);
+      }).eq("session_id", sessionId);
     } catch (dbErr) {
       console.error("⚠️  Supabase update failed (finish):", dbErr?.message);
     }
@@ -1537,17 +1540,13 @@ export const finishEmergency = async (req, res) => {
     logEvent(req, "EMERGENCY_FINISHED", {
       sessionId,
       userId,
-      someoneAnswered: !!session.someoneAnswered,
-      emergencyServicesCalled: !!session.emergencyServicesCalled,
+      finishStatus,
+      someoneAnswered: !!someoneAnswered,
+      emergencyServicesCalled: !!emergencyServicesCalled,
+      contactsMessaged: !!contactsMessaged,
     });
 
-    return res.json({
-      ok: true,
-      success: true,
-      code: "COMPLETED",
-      message: "Emergency session finished.",
-      sessionId,
-    });
+    return res.json({ ok: true, message: "Session status updated." });
   } catch (err) {
     return fail(res, 500, "INTERNAL_ERROR", err.message || "Internal server error");
   }
